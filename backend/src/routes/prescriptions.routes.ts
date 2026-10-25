@@ -1,7 +1,7 @@
 
 import { Router } from "express";
 import { z } from "zod";
-import { supabaseForRequest } from "../config/supabase.js";
+import { supabaseAdmin, supabaseForRequest } from "../config/supabase.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { sha256Hex, anchorHashOnChain } from "../services/blockchain.service.js";
 
@@ -13,12 +13,28 @@ router.get("/", async (req, res) => {
 
   const { data, error } = await db
     .from("prescriptions")
-    .select("*")
+    .select("*, blockchain_transactions(tx_hash, status, block_number)")
     .order("issued_at", { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
 
-  res.json(data);
+  // Look names up with the admin client: users RLS hides other people's rows.
+  const ids = [...new Set(data.flatMap((p) => [p.patient_id, p.doctor_id]))];
+  const { data: people, error: peopleError } = await supabaseAdmin
+    .from("users")
+    .select("id, full_name")
+    .in("id", ids);
+
+  if (peopleError) return res.status(500).json({ error: peopleError.message });
+
+  const names = new Map(people.map((u) => [u.id, u.full_name]));
+  res.json(
+    data.map((p) => ({
+      ...p,
+      patient_name: names.get(p.patient_id) ?? null,
+      doctor_name: names.get(p.doctor_id) ?? null,
+    }))
+  );
 });
 
 const medicationSchema = z.object({

@@ -22,6 +22,7 @@ interface PrescriptionRecord {
   medications: MedicationItem[];
   notes?: string;
   issued_at: string;
+  patient_name?: string | null;
   blockchain_transactions?: {
     tx_hash: string;
     status: string;
@@ -701,7 +702,9 @@ export default function DoctorDashboard() {
             </div>
           ) : (
             prescriptions.map((p) => {
-              const txHash = p.blockchain_transactions?.[0]?.tx_hash;
+              const txHash = p.blockchain_transactions?.find(
+                (t) => t.status === "confirmed"
+              )?.tx_hash;
               return (
                 <div
                   key={p.id}
@@ -710,9 +713,15 @@ export default function DoctorDashboard() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs border-b border-zinc-800/60 pb-3">
                     <div>
                       <span className="text-zinc-500">Patient: </span>
-                      <span className="font-mono text-zinc-300 text-[11px]">
-                        {p.patient_id.slice(0, 8)}…
-                      </span>
+                      {p.patient_name ? (
+                        <span className="font-semibold text-zinc-200">
+                          {p.patient_name}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-zinc-300 text-[11px]">
+                          {p.patient_id.slice(0, 8)}…
+                        </span>
+                      )}
                     </div>
                     <span className="text-zinc-500 text-[11px]">
                       Issued{" "}
@@ -755,10 +764,17 @@ export default function DoctorDashboard() {
                   )}
 
                   <div className="flex items-center justify-between text-[11px] flex-wrap gap-2 pt-1 border-t border-zinc-800/60">
-                    <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Blockchain Anchored
-                    </span>
+                    {txHash ? (
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Blockchain Anchored
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-zinc-500 font-medium">
+                        <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
+                        Not anchored on-chain
+                      </span>
+                    )}
                     {txHash && (
                       <a
                         href={`https://sepolia.etherscan.io/tx/${txHash}`}

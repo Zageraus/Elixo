@@ -13,6 +13,7 @@ interface PrescriptionRecord {
   medications: MedicationItem[];
   notes?: string;
   issued_at: string;
+  doctor_name?: string | null;
   blockchain_transactions?: {
     tx_hash: string;
     status: string;
@@ -524,7 +525,9 @@ export default function PatientDashboard() {
             </div>
           ) : (
             prescriptions.map((p) => {
-              const txHash = p.blockchain_transactions?.[0]?.tx_hash;
+              const txHash = p.blockchain_transactions?.find(
+                (t) => t.status === "confirmed"
+              )?.tx_hash;
               return (
                 <div
                   key={p.id}
@@ -540,6 +543,12 @@ export default function PatientDashboard() {
                           day: "numeric",
                         })}
                       </span>
+                      {p.doctor_name && (
+                        <>
+                          {" "}by{" "}
+                          <span className="font-semibold text-white">{p.doctor_name}</span>
+                        </>
+                      )}
                     </span>
                     <span className="text-[11px] font-mono text-zinc-600">
                       Ref: {p.id.slice(0, 8)}
@@ -588,10 +597,17 @@ export default function PatientDashboard() {
                   )}
 
                   <div className="flex items-center justify-between text-[11px] text-zinc-500 flex-wrap gap-2 pt-1 border-t border-zinc-800/60">
-                    <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Anchored on Sepolia
-                    </span>
+                    {txHash ? (
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Anchored on Sepolia
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-zinc-500 font-medium">
+                        <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
+                        Not anchored on-chain
+                      </span>
+                    )}
                     {txHash && (
                       <a
                         href={`https://sepolia.etherscan.io/tx/${txHash}`}

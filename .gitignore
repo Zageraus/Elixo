@@ -17,3 +17,6 @@ typechain-types/
 **/.env
 **/.env.*
 !**/.env.example
+
+# Local-only notes such as demo login passwords
+*.local.md
