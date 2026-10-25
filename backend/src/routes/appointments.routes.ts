@@ -17,7 +17,7 @@ router.get("/doctors", async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from("users")
-    .select("id, full_name")
+    .select("id, full_name, doctor_profiles(specialization)")
     .eq("role", "doctor")
     .order("full_name", { ascending: true });
 
@@ -26,7 +26,14 @@ router.get("/doctors", async (req, res) => {
     return res.status(500).json({ error: "Failed to load doctors." });
   }
 
-  return res.json(data ?? []);
+  // doctor_profiles is 1:1 with users; PostgREST may return it as an object
+  // or a one-element array depending on how it resolves the relationship.
+  const doctors = (data ?? []).map((d: any) => {
+    const profile = Array.isArray(d.doctor_profiles) ? d.doctor_profiles[0] : d.doctor_profiles;
+    return { id: d.id, full_name: d.full_name, specialization: profile?.specialization ?? null };
+  });
+
+  return res.json(doctors);
 });
 
 // List appointments using the request JWT.

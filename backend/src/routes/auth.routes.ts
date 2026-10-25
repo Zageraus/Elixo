@@ -165,7 +165,8 @@ router.post("/verify", async (req, res) => {
 
 /**
  * EMAIL REGISTRATION
- * New email accounts always start with the patient role.
+ * New email accounts are patients or doctors; doctors also get a
+ * doctor_profiles row with their specialization and license number.
  */
 router.post("/register", async (req, res) => {
   const schema = z.object({
@@ -173,6 +174,8 @@ router.post("/register", async (req, res) => {
     password: z.string().min(8).max(72),
     full_name: z.string().trim().min(2).max(100),
     role: z.enum(["patient", "doctor"]),
+    specialization: z.string().trim().min(2).max(100).optional(),
+    license_number: z.string().trim().min(2).max(50).optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -184,8 +187,25 @@ router.post("/register", async (req, res) => {
 
   const email = parsed.data.email.toLowerCase();
   const full_name = parsed.data.full_name;
+  const isDoctor = parsed.data.role === "doctor";
+
+  // doctor_profiles.specialization and license_number are NOT NULL.
+  if (isDoctor && (!parsed.data.specialization || !parsed.data.license_number)) {
+    return res.status(400).json({ error: "Doctors must provide a specialization and license number." });
+  }
 
   try {
+    if (isDoctor) {
+      const { data: existingLicense } = await supabaseAdmin
+        .from("doctor_profiles")
+        .select("user_id")
+        .eq("license_number", parsed.data.license_number!)
+        .maybeSingle();
+      if (existingLicense) {
+        return res.status(409).json({ error: "A doctor with this license number is already registered." });
+      }
+    }
+
     // Create a real Supabase Auth account.
     const { data: authData, error: authError } =
       await supabaseAdmin.auth.admin.createUser({
@@ -227,6 +247,26 @@ router.post("/register", async (req, res) => {
       // Avoid leaving an orphaned Auth account if the app user cannot be created.
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       return res.status(500).json({ error: userError.message });
+    }
+
+    if (isDoctor) {
+      const { error: profileError } = await supabaseAdmin.from("doctor_profiles").insert({
+        user_id: user.id,
+        specialization: parsed.data.specialization,
+        license_number: parsed.data.license_number,
+      });
+
+      if (profileError) {
+        // Roll back both the app user and the Auth account.
+        await supabaseAdmin.from("users").delete().eq("id", user.id);
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        const duplicate = profileError.code === "23505";
+        return res.status(duplicate ? 409 : 500).json({
+          error: duplicate
+            ? "A doctor with this license number is already registered."
+            : profileError.message,
+        });
+      }
     }
 
     if (!user.is_active) {

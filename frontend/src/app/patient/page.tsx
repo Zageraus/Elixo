@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, getUser, MedicationItem } from "../../lib/api";
+import { api, getUser, MedicationItem, DoctorOption } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
 
 interface PrescriptionRecord {
@@ -64,7 +64,8 @@ export default function PatientDashboard() {
     type: "success" | "error";
     text: string;
   } | null>(null);
-  const [doctors, setDoctors] = useState<{ id: string; full_name: string }[]>([]);
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
+  const [specializationFilter, setSpecializationFilter] = useState("");
   const [doctorsLoading, setDoctorsLoading] = useState(true);
   const [doctorsFailed, setDoctorsFailed] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -175,6 +176,13 @@ export default function PatientDashboard() {
       setUploading(false);
     }
   };
+
+  const specializations = Array.from(
+    new Set(doctors.map((d) => d.specialization).filter((s): s is string => Boolean(s)))
+  ).sort();
+  const filteredDoctors = specializationFilter
+    ? doctors.filter((d) => d.specialization === specializationFilter)
+    : doctors;
 
   const statCards = [
     {
@@ -297,32 +305,57 @@ export default function PatientDashboard() {
           onSubmit={handleBookAppointment}
           className="glass-card border border-zinc-800/80 rounded-2xl p-6 shadow-xl space-y-4"
         >
-          <div>
-            <label htmlFor="doctor_id" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-              Doctor <span className="text-red-400">*</span>
-            </label>
-            <select
-              id="doctor_id"
-              name="doctor_id"
-              required
-              defaultValue=""
-              disabled={doctorsLoading || doctors.length === 0}
-              className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-60"
-            >
-              <option value="" disabled>
-                {doctorsLoading ? "Loading doctors…" : doctors.length ? "Select a doctor" : "No doctors available"}
-              </option>
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.full_name || "Doctor"} · {doctor.id.slice(0, 8)}
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-4">
+            <div>
+              <label htmlFor="specialization_filter" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Specialization
+              </label>
+              <select
+                id="specialization_filter"
+                value={specializationFilter}
+                onChange={(e) => setSpecializationFilter(e.target.value)}
+                disabled={doctorsLoading || specializations.length === 0}
+                className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-60"
+              >
+                <option value="">All specializations</option>
+                {specializations.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="doctor_id" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Doctor <span className="text-red-400">*</span>
+              </label>
+              <select
+                // Remount when the filter changes so a doctor hidden by the
+                // filter can't stay selected.
+                key={specializationFilter}
+                id="doctor_id"
+                name="doctor_id"
+                required
+                defaultValue=""
+                disabled={doctorsLoading || filteredDoctors.length === 0}
+                className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-60"
+              >
+                <option value="" disabled>
+                  {doctorsLoading ? "Loading doctors…" : filteredDoctors.length ? "Select a doctor" : "No doctors available"}
                 </option>
-              ))}
-            </select>
-            {!doctorsLoading && !doctorsFailed && doctors.length === 0 && (
-              <p className="text-[11px] text-amber-400 mt-1.5">
-                No doctors are registered yet.
-              </p>
-            )}
+                {filteredDoctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.full_name || "Doctor"}
+                    {doctor.specialization ? ` · ${doctor.specialization}` : ""}
+                  </option>
+                ))}
+              </select>
+              {!doctorsLoading && !doctorsFailed && doctors.length === 0 && (
+                <p className="text-[11px] text-amber-400 mt-1.5">
+                  No doctors are registered yet.
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

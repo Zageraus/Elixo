@@ -77,6 +77,7 @@ export interface CreatePrescriptionInput {
 export interface DoctorOption {
   id: string;
   full_name: string;
+  specialization: string | null;
 }
 
 export const api = {
@@ -85,6 +86,8 @@ export const api = {
     password: string;
     full_name: string;
     role: "patient" | "doctor";
+    specialization?: string;
+    license_number?: string;
   }) =>
     request<{ token: string; user: any }>("/api/auth/register", {
       method: "POST",

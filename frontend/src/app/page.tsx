@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { api, setToken, setUser } from "../lib/api";
+import { SPECIALIZATIONS } from "../lib/specializations";
 
 export default function LoginPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -11,6 +12,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<"patient" | "doctor">("patient");
+  const [specialization, setSpecialization] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
   const [authError, setAuthError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -34,6 +37,9 @@ export default function LoginPage() {
               password,
               full_name: fullName.trim(),
               role,
+              ...(role === "doctor"
+                ? { specialization, license_number: licenseNumber.trim() }
+                : {}),
             })
           : await api.login({
               email: email.trim(),
@@ -228,6 +234,48 @@ export default function LoginPage() {
                   </button>
                 </div>
               </fieldset>
+            )}
+
+            {mode === "register" && role === "doctor" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label htmlFor="specialization" className="text-xs font-medium text-zinc-300">
+                    Specialization
+                  </label>
+                  <select
+                    id="specialization"
+                    required
+                    value={specialization}
+                    onChange={(event) => setSpecialization(event.target.value)}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
+                  >
+                    <option value="" disabled>
+                      Select a specialization
+                    </option>
+                    {SPECIALIZATIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="licenseNumber" className="text-xs font-medium text-zinc-300">
+                    License Number
+                  </label>
+                  <input
+                    id="licenseNumber"
+                    type="text"
+                    required
+                    minLength={2}
+                    maxLength={50}
+                    value={licenseNumber}
+                    onChange={(event) => setLicenseNumber(event.target.value)}
+                    placeholder="e.g. MCI-123456"
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
             )}
 
             <div className="space-y-1.5">
