@@ -53,11 +53,19 @@ router.post("/", upload.single("file"), async (req, res) => {
   // inline, but sync here keeps the demo/grading flow simple to trace.
   const results: Record<string, unknown> = { report };
 
+if (process.env.BLOCKCHAIN_ENABLED === "true") {
   try {
-    results.blockchain = await anchorHashOnChain({ recordId: report.id, fileHashHex: fileHash, recordType: "report" });
+    results.blockchain = await anchorHashOnChain({
+      recordId: report.id,
+      fileHashHex: fileHash,
+      recordType: "report",
+    });
   } catch (e: any) {
     results.blockchain_error = e.message;
   }
+} else {
+  results.blockchain = { status: "disabled" };
+}
 
   if (parsed.data.raw_text) {
     try {

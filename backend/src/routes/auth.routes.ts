@@ -1,13 +1,32 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
-import { verifyMessage } from "ethers";
+import { verifyMessage, id } from "ethers";
 import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase.js";
 import { issueAppJwt } from "../middleware/auth.js";
+import { createClient } from "@supabase/supabase-js";
 
 const router = Router();
-
+const supabaseAuth = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
+
+/**
+ * users.wallet_address is NOT NULL, so email accounts get a placeholder
+ * address derived from their Supabase Auth user id. Nobody holds a private
+ * key for it, so it can never be used for wallet sign-in, and it is never
+ * returned to the client.
+ */
+function emailAccountWallet(authUserId: string): string {
+  return `0x${id(`email-account:${authUserId}`).slice(-40)}`;
+}
+
+function publicWallet(walletAddress: string, authUserId: string): string {
+  return walletAddress === emailAccountWallet(authUserId) ? "" : walletAddress;
+}
 
 /**
  * WORKFLOW 1 — BLOCKCHAIN AUTHENTICATION
@@ -141,6 +160,196 @@ router.post("/verify", async (req, res) => {
   const token = issueAppJwt({ app_user_id: user.id, app_role: user.role, wallet_address: wallet });
 
   res.json({ token, user: { id: user.id, role: user.role, full_name: user.full_name, wallet_address: wallet } });
+});
+
+
+/**
+ * EMAIL REGISTRATION
+ * New email accounts always start with the patient role.
+ */
+router.post("/register", async (req, res) => {
+  const schema = z.object({
+    email: z.string().trim().email().max(254),
+    password: z.string().min(8).max(72),
+    full_name: z.string().trim().min(2).max(100),
+    role: z.enum(["patient", "doctor"]),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Enter a valid email, a password of at least 8 characters, and your full name.",
+    });
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const full_name = parsed.data.full_name;
+
+  try {
+    // Create a real Supabase Auth account.
+    const { data: authData, error: authError } =
+      await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: parsed.data.password,
+        email_confirm: true,
+        user_metadata: { full_name },
+      });
+
+    if (authError) {
+      const duplicate =
+        /already registered|already exists|duplicate/i.test(authError.message);
+
+      return res.status(duplicate ? 409 : 400).json({
+        error: duplicate
+          ? "An account with this email already exists. Please log in."
+          : authError.message,
+      });
+    }
+
+    if (!authData.user) {
+      return res.status(500).json({ error: "Could not create the account." });
+    }
+
+    // Use the validated registration role (patient or doctor).
+    // Admin registration remains unavailable through this endpoint.
+    const { data: user, error: userError } = await supabaseAdmin
+      .from("users")
+      .insert({
+        email,
+        full_name,
+        role: parsed.data.role,
+        wallet_address: emailAccountWallet(authData.user.id),
+      })
+      .select("*")
+      .single();
+
+    if (userError) {
+      // Avoid leaving an orphaned Auth account if the app user cannot be created.
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      return res.status(500).json({ error: userError.message });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ error: "Account disabled." });
+    }
+
+    // Keep using the application's JWT for existing API and RLS behavior.
+    const token = issueAppJwt({
+      app_user_id: user.id,
+      app_role: user.role,
+      wallet_address: "",
+    });
+
+    return res.status(201).json({
+      token,
+      user: {
+        id: user.id,
+        role: user.role,
+        full_name: user.full_name,
+        email: user.email,
+        wallet_address: "",
+      },
+    });
+  } catch (error) {
+    console.error("Email registration failed:", error);
+    return res.status(500).json({ error: "Registration failed." });
+  }
+});
+
+/**
+ * EMAIL LOGIN
+ */
+router.post("/login", async (req, res) => {
+  const schema = z.object({
+    email: z.string().trim().email().max(254),
+    password: z.string().min(1).max(72),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Enter a valid email and password." });
+  }
+
+  const email = parsed.data.email.toLowerCase();
+
+  try {
+    // Verify the password using Supabase Auth.
+    const { data: authData, error: authError } =
+      await supabaseAuth.auth.signInWithPassword({
+        email,
+        password: parsed.data.password,
+      });
+
+    if (authError || !authData.user) {
+      return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    // Look up the application's user record.
+    const { data: user, error: userError } = await supabaseAdmin
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (userError) {
+      return res.status(500).json({ error: userError.message });
+    }
+
+    // A Supabase Auth account without an app user row is not automatically
+    // assigned a privileged role. Create it as a patient.
+    let appUser = user;
+
+    if (!appUser) {
+      const metadataName = authData.user.user_metadata?.full_name;
+      const full_name =
+        typeof metadataName === "string" && metadataName.trim()
+          ? metadataName.trim()
+          : email.split("@")[0];
+
+      const { data: created, error: createError } = await supabaseAdmin
+        .from("users")
+        .insert({
+          email,
+          full_name,
+          role: "patient",
+          wallet_address: emailAccountWallet(authData.user.id),
+        })
+        .select("*")
+        .single();
+
+      if (createError) {
+        return res.status(500).json({ error: createError.message });
+      }
+
+      appUser = created;
+    }
+
+    if (!appUser.is_active) {
+      return res.status(403).json({ error: "Account disabled." });
+    }
+
+    const wallet_address = publicWallet(appUser.wallet_address, authData.user.id);
+
+    const token = issueAppJwt({
+      app_user_id: appUser.id,
+      app_role: appUser.role,
+      wallet_address,
+    });
+
+    return res.json({
+      token,
+      user: {
+        id: appUser.id,
+        role: appUser.role,
+        full_name: appUser.full_name,
+        email: appUser.email,
+        wallet_address,
+      },
+    });
+  } catch (error) {
+    console.error("Email login failed:", error);
+    return res.status(500).json({ error: "Login failed." });
+  }
 });
 
 /**

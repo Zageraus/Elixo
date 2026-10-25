@@ -1,24 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useWalletAuth } from "../hooks/useWalletAuth";
+import { api, setToken, setUser } from "../lib/api";
 
 export default function LoginPage() {
-  const { loginWithDemoRole, loading, error } = useWalletAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState<"patient" | "doctor">("patient");
+  const [authError, setAuthError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleRoute = (user: any) => {
-    if (!user) return;
     if (user.role === "doctor") router.push("/doctor");
     else if (user.role === "admin") router.push("/admin");
     else router.push("/patient");
   };
 
-  const handleDemoLogin = async (role: "patient" | "doctor" | "admin") => {
-    const user = await loginWithDemoRole(role).catch(() => null);
-    handleRoute(user);
+  const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthError("");
+    setLoading(true);
+
+    try {
+      const result =
+        mode === "register"
+          ? await api.register({
+              email: email.trim(),
+              password,
+              full_name: fullName.trim(),
+              role,
+            })
+          : await api.login({
+              email: email.trim(),
+              password,
+            });
+
+      setToken(result.token);
+      setUser(result.user);
+      handleRoute(result.user);
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : "Authentication failed."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -98,62 +129,171 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Auth Centerpiece Card */}
+        {/* Email Authentication Card */}
         <div className="w-full max-w-lg glass-card rounded-3xl p-6 sm:p-8 border border-zinc-800/80 shadow-2xl backdrop-blur-2xl hover:border-purple-500/40 transition-all duration-500 space-y-6">
           <div className="text-center">
-            <h2 className="text-xl font-bold text-white tracking-tight">Access ELIXOR</h2>
-            <p className="text-xs text-zinc-400 mt-1">Choose your role to open the demonstration portal</p>
-          </div>
-
-          {/* Role-based application access: no browser wallet required */}
-          {/* 1-Click Interactive Demo Profiles */}
-          <div className="space-y-2.5">
-            <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider text-center">
-              Role-Based Demonstration Profiles:
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              {mode === "login" ? "Welcome Back" : "Create Your Account"}
+            </h2>
+            <p className="text-xs text-zinc-400 mt-2">
+              {mode === "login"
+                ? "Sign in securely with your email and password."
+                : "Register to get started with ELIXOR."}
             </p>
-            <div className="grid grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDemoLogin("patient")}
-                className="p-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-all duration-300 flex flex-col items-center gap-1.5 text-center shadow-md hover:border-emerald-500/60 hover:scale-105 disabled:opacity-50 group"
-              >
-                <span className="text-lg group-hover:scale-110 transition-transform">🧑‍⚕️</span>
-                <span className="font-bold text-white">Patient</span>
-                <span className="text-[10px] text-emerald-400/90 font-mono truncate max-w-full">Chitra Menon</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDemoLogin("doctor")}
-                className="p-3 rounded-2xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-all duration-300 flex flex-col items-center gap-1.5 text-center shadow-md hover:border-blue-500/60 hover:scale-105 disabled:opacity-50 group"
-              >
-                <span className="text-lg group-hover:scale-110 transition-transform">🩺</span>
-                <span className="font-bold text-white">Doctor</span>
-                <span className="text-[10px] text-blue-400/90 font-mono truncate max-w-full">Dr. Bob Rao</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDemoLogin("admin")}
-                className="p-3 rounded-2xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs font-medium transition-all duration-300 flex flex-col items-center gap-1.5 text-center shadow-md hover:border-purple-500/60 hover:scale-105 disabled:opacity-50 group"
-              >
-                <span className="text-lg group-hover:scale-110 transition-transform">🛡️</span>
-                <span className="font-bold text-white">Admin</span>
-                <span className="text-[10px] text-purple-400/90 font-mono truncate max-w-full">Alice Admin</span>
-              </button>
-            </div>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs text-center font-medium animate-in fade-in">
-              ⚠️ {error}
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-zinc-900/80 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setAuthError("");
+              }}
+              className={`rounded-lg py-2.5 text-sm font-semibold transition ${
+                mode === "login"
+                  ? "bg-purple-600 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Log In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setAuthError("");
+              }}
+              className={`rounded-lg py-2.5 text-sm font-semibold transition ${
+                mode === "register"
+                  ? "bg-purple-600 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
 
+          <form onSubmit={handleAuth} className="space-y-4">
+            {mode === "register" && (
+              <div className="space-y-1.5">
+                <label htmlFor="fullName" className="text-xs font-medium text-zinc-300">
+                  Full Name
+                </label>
+                <input
+                  id="fullName"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="Enter your full name"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
+                />
+              </div>
+            )}
+
+            {mode === "register" && (
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-medium text-zinc-300">
+                  Register as
+                </legend>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRole("patient")}
+                    aria-pressed={role === "patient"}
+                    className={`rounded-xl border p-3 text-left transition ${
+                      role === "patient"
+                        ? "border-purple-500 bg-purple-500/10"
+                        : "border-zinc-700 bg-zinc-900/60 hover:border-zinc-500"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold text-white">Patient</span>
+                    <span className="mt-1 block text-xs text-zinc-400">Book appointments</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole("doctor")}
+                    aria-pressed={role === "doctor"}
+                    className={`rounded-xl border p-3 text-left transition ${
+                      role === "doctor"
+                        ? "border-purple-500 bg-purple-500/10"
+                        : "border-zinc-700 bg-zinc-900/60 hover:border-zinc-500"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold text-white">Doctor</span>
+                    <span className="mt-1 block text-xs text-zinc-400">Manage patients</span>
+                  </button>
+                </div>
+              </fieldset>
+            )}
+
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="text-xs font-medium text-zinc-300">
+                Email Address
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                maxLength={254}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-medium text-zinc-300">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                required
+                minLength={mode === "register" ? 8 : 1}
+                maxLength={72}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={mode === "register" ? "At least 8 characters" : "Enter your password"}
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {authError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+              >
+                {authError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading
+                ? "Please wait..."
+                : mode === "login"
+                  ? "Sign In"
+                  : "Create Account"}
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-zinc-500">
+            {mode === "register"
+              ? role === "doctor"
+                ? "Doctor access will be assigned to this account. Use verified credentials in production."
+                : "Patient access lets you book and manage appointments."
+              : "Sign in with the email and password for your account."}
+          </p>
         </div>
 
         {/* Section 1: Core Architectural Pillars (#features) */}

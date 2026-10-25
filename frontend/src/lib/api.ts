@@ -68,7 +68,29 @@ export interface CreatePrescriptionInput {
   notes?: string;
 }
 
+export interface DoctorOption {
+  id: string;
+  full_name: string;
+}
+
 export const api = {
+  register: (body: {
+    email: string;
+    password: string;
+    full_name: string;
+    role: "patient" | "doctor";
+  }) =>
+    request<{ token: string; user: any }>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  login: (body: { email: string; password: string }) =>
+    request<{ token: string; user: any }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   getNonce: (wallet_address: string) =>
     request<{ message: string; nonce: string }>("/api/auth/nonce", {
       method: "POST",
@@ -79,6 +101,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ wallet_address, message, signature, admin_key }),
     }),
+  getDoctors: () => request<DoctorOption[]>("/api/appointments/doctors"),
   getAppointments: () => request<any[]>("/api/appointments"),
   createAppointment: (body: { doctor_id: string; scheduled_at: string; reason?: string }) =>
     request("/api/appointments", { method: "POST", body: JSON.stringify(body) }),
@@ -98,4 +121,3 @@ export const api = {
       body: JSON.stringify({ role }),
     }),
 };
-

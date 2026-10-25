@@ -63,6 +63,13 @@ export default function PatientDashboard() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const [doctors, setDoctors] = useState<{ id: string; full_name: string }[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [booking, setBooking] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     const authed = getUser();
@@ -72,13 +79,60 @@ export default function PatientDashboard() {
       api.getAppointments(),
       api.getReports(),
       api.getPrescriptions(),
-    ]).then(([appts, rpts, presc]) => {
+      api.getDoctors(),
+    ]).then(([appts, rpts, presc, docs]) => {
       if (appts.status === "fulfilled") setAppointments(appts.value);
       if (rpts.status === "fulfilled") setReports(rpts.value);
       if (presc.status === "fulfilled") setPrescriptions(presc.value);
+      if (docs.status === "fulfilled") setDoctors(docs.value);
+      else {
+        console.error("Could not load doctors:", docs.reason);
+        setBookingMessage({
+          type: "error",
+          text: "Could not load doctors. Check the backend doctor-list endpoint and users-table RLS policies.",
+        });
+      }
       setLoading(false);
+      setDoctorsLoading(false);
     });
   }, []);
+
+  const handleBookAppointment = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBooking(true);
+    setBookingMessage(null);
+    const form = new FormData(e.currentTarget);
+    const doctorId = String(form.get("doctor_id") || "").trim();
+    const localDateTime = String(form.get("scheduled_at") || "");
+    const reason = String(form.get("reason") || "").trim();
+
+    if (!doctorId || !localDateTime) {
+      setBookingMessage({ type: "error", text: "Choose a doctor and an appointment date and time." });
+      setBooking(false);
+      return;
+    }
+
+    try {
+      await api.createAppointment({
+        doctor_id: doctorId,
+        scheduled_at: new Date(localDateTime).toISOString(),
+        ...(reason ? { reason } : {}),
+      });
+      setAppointments(await api.getAppointments());
+      setBookingMessage({
+        type: "success",
+        text: "Appointment request submitted successfully. Your request is pending until the doctor responds.",
+      });
+      e.currentTarget.reset();
+    } catch (err: any) {
+      setBookingMessage({
+        type: "error",
+        text: err?.message ?? "Could not book the appointment. Please try again.",
+      });
+    } finally {
+      setBooking(false);
+    }
+  };
 
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -207,6 +261,103 @@ export default function PatientDashboard() {
               </div>
             ))}
       </div>
+
+      {/* Book Appointment */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <span className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center text-sm">
+              🗓️
+            </span>
+            Book an Appointment
+          </h2>
+          <p className="text-xs text-zinc-500 mt-1 ml-10">
+            Choose a doctor, select a time, and submit your appointment request.
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleBookAppointment}
+          className="glass-card border border-zinc-800/80 rounded-2xl p-6 shadow-xl space-y-4"
+        >
+          <div>
+            <label htmlFor="doctor_id" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+              Doctor <span className="text-red-400">*</span>
+            </label>
+            <select
+              id="doctor_id"
+              name="doctor_id"
+              required
+              defaultValue=""
+              disabled={doctorsLoading || doctors.length === 0}
+              className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-60"
+            >
+              <option value="" disabled>
+                {doctorsLoading ? "Loading doctors…" : doctors.length ? "Select a doctor" : "No doctors available"}
+              </option>
+              {doctors.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>
+                  {doctor.full_name || "Doctor"} · {doctor.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+            {!doctorsLoading && doctors.length === 0 && (
+              <p className="text-[11px] text-amber-400 mt-1.5">
+                No doctors were returned. Confirm that doctor accounts exist and patient access to doctor profiles is allowed by RLS.
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="scheduled_at" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Date and time <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="scheduled_at"
+                name="scheduled_at"
+                type="datetime-local"
+                required
+                min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="reason" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Reason for visit <span className="text-zinc-500 font-normal">(optional)</span>
+              </label>
+              <input
+                id="reason"
+                name="reason"
+                maxLength={500}
+                placeholder="e.g. Follow-up consultation"
+                className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {bookingMessage && (
+            <div
+              role="status"
+              className={`p-3.5 rounded-xl text-xs font-medium border ${
+                bookingMessage.type === "success"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-red-500/10 border-red-500/30 text-red-400"
+              }`}
+            >
+              {bookingMessage.text}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={booking || doctorsLoading || doctors.length === 0}
+            className="rounded-xl bg-gradient-to-r from-cyan-700 via-blue-600 to-purple-600 hover:from-cyan-600 hover:to-purple-500 text-white px-6 py-3 text-xs font-semibold disabled:opacity-50 shadow-lg transition-all"
+          >
+            {booking ? "Submitting request…" : "Request Appointment"}
+          </button>
+        </form>
+      </section>
 
       {/* Upcoming Appointments */}
       <section className="space-y-4">
