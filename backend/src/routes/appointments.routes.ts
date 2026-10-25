@@ -36,14 +36,14 @@ router.get("/", async (req, res) => {
   }
 
   const db = supabaseForRequest(req.rawJwt!);
-  const view =
-    req.auth!.app_role === "doctor"
-      ? "v_doctor_dashboard"
-      : "v_patient_dashboard";
+  const isDoctor = req.auth!.app_role === "doctor";
 
+  // Views run with their owner's rights, so RLS on appointments doesn't
+  // filter them; scope the rows to the signed-in user here.
   const { data, error } = await db
-    .from(view)
+    .from(isDoctor ? "v_doctor_dashboard" : "v_patient_dashboard")
     .select("*")
+    .eq(isDoctor ? "doctor_id" : "patient_id", req.auth!.app_user_id)
     .order("scheduled_at", { ascending: true });
 
   if (error) {

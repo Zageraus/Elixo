@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request } from "express";
 import multer from "multer";
 import { z } from "zod";
 import { supabaseForRequest, supabaseAdmin } from "../config/supabase.js";
@@ -82,17 +82,28 @@ if (process.env.BLOCKCHAIN_ENABLED === "true") {
   res.status(201).json(results);
 });
 
+/**
+ * v_report_with_analysis runs with its owner's rights, so RLS on
+ * medical_reports doesn't filter it. Apply the same rule as the
+ * p_reports_select policy here: admins see everything, everyone else only
+ * reports where they are the patient or the assigned doctor.
+ */
+function reportsForUser(req: Request) {
+  const query = supabaseForRequest(req.rawJwt!).from("v_report_with_analysis").select("*");
+  if (req.auth!.app_role === "admin") return query;
+  const me = req.auth!.app_user_id;
+  return query.or(`patient_id.eq.${me},doctor_id.eq.${me}`);
+}
+
 router.get("/:id", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db.from("v_report_with_analysis").select("*").eq("report_id", req.params.id).maybeSingle();
+  const { data, error } = await reportsForUser(req).eq("report_id", req.params.id).maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Not found or not authorized" });
   res.json(data);
 });
 
 router.get("/", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db.from("v_report_with_analysis").select("*").order("report_created_at", { ascending: false });
+  const { data, error } = await reportsForUser(req).order("report_created_at", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });

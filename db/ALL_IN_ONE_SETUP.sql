@@ -712,5 +712,13 @@ insert into blockchain_transactions (report_id, chain, tx_hash, block_number, da
      'confirmed', now());
 
 
+-- Trigger functions run as their owner so RLS doesn't block the audit,
+-- notification, and role-check writes they make (see migration 006).
+alter function fn_audit_trigger() security definer set search_path = public;
+alter function fn_notify_appointment_change() security definer set search_path = public;
+alter function fn_notify_new_report() security definer set search_path = public;
+alter function fn_notify_new_prescription() security definer set search_path = public;
+alter function fn_check_doctor_role() security definer set search_path = public;
+
 -- Force reload schema cache for PostgREST
 NOTIFY pgrst, 'reload schema';

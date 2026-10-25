@@ -64,6 +64,8 @@ export default function DoctorDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +113,26 @@ export default function DoctorDashboard() {
       updated[index] = { ...updated[index], [field]: value };
       return updated;
     });
+  };
+
+  const handleUpdateStatus = async (
+    appt: AppointmentItem,
+    status: "confirmed" | "completed" | "cancelled"
+  ) => {
+    setUpdatingId(appt.appointment_id);
+    setStatusError(null);
+    try {
+      await api.updateAppointmentStatus(appt.appointment_id, status);
+      setAppointments((prev) =>
+        prev.map((a) =>
+          a.appointment_id === appt.appointment_id ? { ...a, status } : a
+        )
+      );
+    } catch (err: any) {
+      setStatusError(err.message || "Could not update the appointment.");
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const handleStartPrescription = (appt: AppointmentItem) => {
@@ -279,6 +301,12 @@ export default function DoctorDashboard() {
           </span>
         </div>
 
+        {statusError && (
+          <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+            {statusError}
+          </div>
+        )}
+
         <div className="glass-card rounded-2xl border border-zinc-800/80 divide-y divide-zinc-800/60 overflow-hidden shadow-xl">
           {loading ? (
             <div className="p-6 space-y-4">
@@ -318,6 +346,8 @@ export default function DoctorDashboard() {
                           ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                           : a.status === "completed"
                           ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                          : a.status === "cancelled" || a.status === "no_show"
+                          ? "bg-red-500/10 text-red-400 border-red-500/30"
                           : "bg-amber-500/10 text-amber-400 border-amber-500/30"
                       }`}
                     >
@@ -341,14 +371,46 @@ export default function DoctorDashboard() {
                   </p>
                 </div>
 
+                <div className="self-start sm:self-auto flex flex-wrap items-center gap-2 flex-shrink-0">
+                {a.status === "requested" && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={updatingId === a.appointment_id}
+                      onClick={() => handleUpdateStatus(a, "confirmed")}
+                      className="text-xs font-semibold px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all duration-200 disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      disabled={updatingId === a.appointment_id}
+                      onClick={() => handleUpdateStatus(a, "cancelled")}
+                      className="text-xs font-semibold px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-all duration-200 disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </>
+                )}
+                {a.status === "confirmed" && (
+                  <button
+                    type="button"
+                    disabled={updatingId === a.appointment_id}
+                    onClick={() => handleUpdateStatus(a, "completed")}
+                    className="text-xs font-semibold px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all duration-200 disabled:opacity-50"
+                  >
+                    Mark completed
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handleStartPrescription(a)}
-                  className="self-start sm:self-auto flex-shrink-0 text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-800 via-indigo-600 to-blue-500 hover:from-purple-700 hover:to-blue-400 text-white shadow-md hover:scale-105 active:scale-95 transition-all duration-300 flex items-center gap-2"
+                  className="flex-shrink-0 text-xs font-semibold px-4 py-2 rounded-xl bg-gradient-to-r from-purple-800 via-indigo-600 to-blue-500 hover:from-purple-700 hover:to-blue-400 text-white shadow-md hover:scale-105 active:scale-95 transition-all duration-300 flex items-center gap-2"
                 >
                   <span>💊</span>
                   <span>Write Prescription</span>
                 </button>
+                </div>
               </div>
             ))
           )}

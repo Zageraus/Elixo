@@ -111,6 +111,8 @@ export const api = {
   getAppointments: () => request<any[]>("/api/appointments"),
   createAppointment: (body: { doctor_id: string; scheduled_at: string; reason?: string }) =>
     request("/api/appointments", { method: "POST", body: JSON.stringify(body) }),
+  updateAppointmentStatus: (id: string, status: "confirmed" | "completed" | "cancelled" | "no_show") =>
+    request(`/api/appointments/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
   getReports: () => request<any[]>("/api/reports"),
   uploadReport: (form: FormData) => request("/api/reports", { method: "POST", body: form }),
   getPrescriptions: () => request<any[]>("/api/prescriptions"),
