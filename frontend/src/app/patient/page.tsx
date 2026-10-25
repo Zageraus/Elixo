@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, getUser, MedicationItem } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
 
@@ -65,15 +66,27 @@ export default function PatientDashboard() {
   } | null>(null);
   const [doctors, setDoctors] = useState<{ id: string; full_name: string }[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [doctorsFailed, setDoctorsFailed] = useState(false);
   const [booking, setBooking] = useState(false);
   const [bookingMessage, setBookingMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const authed = getUser();
-    if (authed) setUser(authed);
+    // The doctor-list and booking endpoints are patient-only, so send
+    // signed-out users to login and other roles to their own dashboard.
+    if (!authed) {
+      router.replace("/");
+      return;
+    }
+    if (authed.role !== "patient") {
+      router.replace(authed.role === "doctor" ? "/doctor" : "/admin");
+      return;
+    }
+    setUser(authed);
 
     Promise.allSettled([
       api.getAppointments(),
@@ -87,15 +100,16 @@ export default function PatientDashboard() {
       if (docs.status === "fulfilled") setDoctors(docs.value);
       else {
         console.error("Could not load doctors:", docs.reason);
+        setDoctorsFailed(true);
         setBookingMessage({
           type: "error",
-          text: "Could not load doctors. Check the backend doctor-list endpoint and users-table RLS policies.",
+          text: `Could not load doctors: ${docs.reason?.message ?? "unknown error"}`,
         });
       }
       setLoading(false);
       setDoctorsLoading(false);
     });
-  }, []);
+  }, [router]);
 
   const handleBookAppointment = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -301,9 +315,9 @@ export default function PatientDashboard() {
                 </option>
               ))}
             </select>
-            {!doctorsLoading && doctors.length === 0 && (
+            {!doctorsLoading && !doctorsFailed && doctors.length === 0 && (
               <p className="text-[11px] text-amber-400 mt-1.5">
-                No doctors were returned. Confirm that doctor accounts exist and patient access to doctor profiles is allowed by RLS.
+                No doctors are registered yet.
               </p>
             )}
           </div>
