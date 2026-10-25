@@ -76,6 +76,20 @@ export interface CreatePrescriptionInput {
   notes?: string;
 }
 
+export interface ManagedUser {
+  id: string;
+  full_name: string;
+  email: string | null;
+  role: "patient" | "doctor";
+  is_active: boolean;
+  created_at: string;
+  specialization: string | null;
+  appointment_count: number;
+  prescription_count: number;
+  report_count: number;
+  payment_count: number;
+}
+
 export interface DoctorOption {
   id: string;
   full_name: string;
@@ -134,6 +148,14 @@ export const api = {
     }),
   getAnalytics: () => request<any>("/api/admin/analytics"),
   getDoctorLoad: () => request<any[]>("/api/admin/doctor-load"),
+  getManagedUsers: () => request<ManagedUser[]>("/api/admin/users"),
+  setUserActive: (id: string, is_active: boolean) =>
+    request<{ id: string; is_active: boolean; cancelled_appointments: number }>(
+      `/api/admin/users/${id}/active`,
+      { method: "PATCH", body: JSON.stringify({ is_active }) }
+    ),
+  deleteUser: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
   demoLogin: (role: "patient" | "doctor" | "admin") =>
     request<{ token: string; user: any }>("/api/auth/demo", {
       method: "POST",

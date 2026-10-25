@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api, getUser } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
+import UserManagement from "../../components/UserManagement";
 import { formatINR } from "../../lib/payments";
 
 export default function AdminDashboard() {
@@ -134,6 +135,13 @@ export default function AdminDashboard() {
           </ResponsiveContainer>
         </div>
       </section>
+
+      <UserManagement
+        onChanged={() => {
+          api.getAnalytics().then(setAnalytics).catch(console.error);
+          api.getDoctorLoad().then(setLoad).catch(console.error);
+        }}
+      />
     </div>
   );
 }

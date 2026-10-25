@@ -20,6 +20,7 @@ router.get("/doctors", async (req, res) => {
     .from("users")
     .select("id, full_name, doctor_profiles(specialization)")
     .eq("role", "doctor")
+    .eq("is_active", true)
     .order("full_name", { ascending: true });
 
   if (error) {
@@ -92,6 +93,7 @@ router.post("/", async (req, res) => {
     .select("id")
     .eq("id", parsed.data.doctor_id)
     .eq("role", "doctor")
+    .eq("is_active", true)
     .maybeSingle();
 
   if (doctorError) {

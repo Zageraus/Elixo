@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { supabaseAdmin } from "../config/supabase.js";
 
 export interface AppJwtPayload {
   app_user_id: string;
@@ -32,20 +33,34 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Missing bearer token" });
   }
   const token = header.slice("Bearer ".length);
+  let decoded: AppJwtPayload;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as AppJwtPayload;
-    req.auth = decoded;
-    req.rawJwt = token;
-    next();
+    decoded = jwt.verify(token, process.env.JWT_SECRET!) as AppJwtPayload;
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+
+  // Tokens live for 12h, so check the account on every request: a user an
+  // admin deactivated or deleted loses access immediately.
+  const { data: user, error } = await supabaseAdmin
+    .from("users")
+    .select("is_active")
+    .eq("id", decoded.app_user_id)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: "Could not verify account." });
+  if (!user?.is_active) {
+    return res.status(401).json({ error: "This account has been deactivated or removed." });
+  }
+
+  req.auth = decoded;
+  req.rawJwt = token;
+  next();
 }
 
 export function requireRole(...roles: Array<AppJwtPayload["app_role"]>) {
