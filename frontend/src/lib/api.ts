@@ -48,6 +48,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
   if (!res.ok) {
+    // A 401 outside the auth routes means the stored session is expired or
+    // no longer valid, so drop it and send the user back to sign in.
+    if (res.status === 401 && token && !path.startsWith("/api/auth/")) {
+      clearAuth();
+      window.location.replace("/");
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ? (typeof body.error === "string" ? body.error : JSON.stringify(body.error)) : `Request failed: ${res.status}`);
   }
