@@ -508,6 +508,7 @@ alter table prescriptions enable row level security;
 alter table blockchain_transactions enable row level security;
 alter table notifications enable row level security;
 alter table audit_logs enable row level security;
+alter table auth_nonces enable row level security;  -- backend-only (service role), see migration 007
 
 -- USERS: everyone can read their own row; admins read all; doctors read
 -- basic info of their own patients.
