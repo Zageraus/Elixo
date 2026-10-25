@@ -66,6 +66,61 @@ async function findManageableUser(req: Request, res: Response) {
   return user;
 }
 
+const formatIST = (iso: string) =>
+  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+
+/**
+ * Sends one notification to every patient who has an appointment with this
+ * doctor. Patients with upcoming visits are told those visits are cancelled
+ * (and refunded if paid). Call it before cancelling or deleting anything.
+ */
+async function notifyDoctorPatients(
+  doctor: { id: string; full_name: string },
+  reason: "deactivated" | "deleted"
+) {
+  const { data: appts, error } = await supabaseAdmin
+    .from("appointments")
+    .select("id, patient_id, scheduled_at, status, payments(status)")
+    .eq("doctor_id", doctor.id)
+    .order("scheduled_at");
+  if (error) throw error;
+
+  const now = Date.now();
+  const byPatient = new Map<string, { upcoming: string[]; paid: boolean }>();
+  for (const a of appts as any[]) {
+    const entry = byPatient.get(a.patient_id) ?? { upcoming: [], paid: false };
+    if ((a.status === "requested" || a.status === "confirmed") && new Date(a.scheduled_at).getTime() >= now) {
+      entry.upcoming.push(formatIST(a.scheduled_at));
+      const payments = Array.isArray(a.payments) ? a.payments : a.payments ? [a.payments] : [];
+      if (payments.some((p: any) => p.status === "paid")) entry.paid = true;
+    }
+    byPatient.set(a.patient_id, entry);
+  }
+  if (byPatient.size === 0) return 0;
+
+  const lead =
+    reason === "deactivated"
+      ? `${doctor.full_name} is currently unavailable on ELIXOR.`
+      : `${doctor.full_name} is no longer part of ELIXOR.`;
+  const next =
+    reason === "deactivated"
+      ? "Please book with another doctor in the meantime."
+      : "Please select a different doctor for your future appointments.";
+
+  const rows = [...byPatient].map(([patient_id, { upcoming, paid }]) => {
+    const cancelled = upcoming.length
+      ? ` Your upcoming appointment${upcoming.length > 1 ? "s" : ""} on ${upcoming.join(", ")} IST ${
+          upcoming.length > 1 ? "have" : "has"
+        } been cancelled${paid ? " and your payment refunded" : ""}.`
+      : "";
+    return { user_id: patient_id, type: "appointment", message: `${lead}${cancelled} ${next}` };
+  });
+
+  const { error: insertErr } = await supabaseAdmin.from("notifications").insert(rows);
+  if (insertErr) throw insertErr;
+  return rows.length;
+}
+
 const countBy = (rows: { [k: string]: string | null }[], ...keys: string[]) => {
   const counts = new Map<string, number>();
   for (const row of rows) {
@@ -124,6 +179,16 @@ router.patch("/users/:id/active", async (req, res) => {
   const user = await findManageableUser(req, res);
   if (!user) return;
 
+  // Tell the doctor's patients before their appointments are cancelled.
+  let patientsNotified = 0;
+  if (user.role === "doctor" && user.is_active && !parsed.data.is_active) {
+    try {
+      patientsNotified = await notifyDoctorPatients(user, "deactivated");
+    } catch (e: any) {
+      return res.status(500).json({ error: `Could not notify patients: ${e.message}` });
+    }
+  }
+
   const { error } = await supabaseAdmin.from("users").update({ is_active: parsed.data.is_active }).eq("id", user.id);
   if (error) return res.status(500).json({ error: error.message });
 
@@ -141,7 +206,12 @@ router.patch("/users/:id/active", async (req, res) => {
     cancelled = data.length;
   }
 
-  res.json({ id: user.id, is_active: parsed.data.is_active, cancelled_appointments: cancelled });
+  res.json({
+    id: user.id,
+    is_active: parsed.data.is_active,
+    cancelled_appointments: cancelled,
+    patients_notified: patientsNotified,
+  });
 });
 
 /**
@@ -153,6 +223,16 @@ router.patch("/users/:id/active", async (req, res) => {
 router.delete("/users/:id", async (req, res) => {
   const user = await findManageableUser(req, res);
   if (!user) return;
+
+  // Notifications belong to the patients, so they survive the cascade below.
+  let patientsNotified = 0;
+  if (user.role === "doctor") {
+    try {
+      patientsNotified = await notifyDoctorPatients(user, "deleted");
+    } catch (e: any) {
+      return res.status(500).json({ error: `Could not notify patients: ${e.message}` });
+    }
+  }
 
   if (user.role === "patient") {
     const folder = `reports/${user.id}`;
@@ -180,7 +260,7 @@ router.delete("/users/:id", async (req, res) => {
     }
   }
 
-  res.json({ id: user.id, deleted: true });
+  res.json({ id: user.id, deleted: true, patients_notified: patientsNotified });
 });
 
 export default router;

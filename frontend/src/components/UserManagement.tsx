@@ -47,7 +47,7 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
               res.cancelled_appointments
                 ? ` and ${res.cancelled_appointments} upcoming appointment${res.cancelled_appointments === 1 ? " was" : "s were"} cancelled`
                 : ""
-            }.`,
+            }.${res.patients_notified ? ` ${res.patients_notified} patient${res.patients_notified === 1 ? "" : "s"} notified.` : ""}`,
       });
       onChanged?.();
     } catch (err: any) {
@@ -62,9 +62,16 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
     setBusyId(deleting.id);
     setMessage(null);
     try {
-      await api.deleteUser(deleting.id);
+      const res = await api.deleteUser(deleting.id);
       setUsers((prev) => prev.filter((x) => x.id !== deleting.id));
-      setMessage({ type: "success", text: `${deleting.full_name} was permanently deleted.` });
+      setMessage({
+        type: "success",
+        text: `${deleting.full_name} was permanently deleted.${
+          res.patients_notified
+            ? ` ${res.patients_notified} patient${res.patients_notified === 1 ? " was" : "s were"} asked to choose another doctor.`
+            : ""
+        }`,
+      });
       setDeleting(null);
       onChanged?.();
     } catch (err: any) {

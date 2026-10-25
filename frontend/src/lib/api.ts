@@ -90,6 +90,14 @@ export interface ManagedUser {
   payment_count: number;
 }
 
+export interface AppNotification {
+  id: string;
+  type: "appointment" | "report" | "prescription" | "system";
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface DoctorOption {
   id: string;
   full_name: string;
@@ -148,14 +156,19 @@ export const api = {
     }),
   getAnalytics: () => request<any>("/api/admin/analytics"),
   getDoctorLoad: () => request<any[]>("/api/admin/doctor-load"),
+  getNotifications: () => request<AppNotification[]>("/api/notifications"),
+  markAllNotificationsRead: () =>
+    request<{ ok: true }>("/api/notifications/read-all", { method: "PATCH" }),
   getManagedUsers: () => request<ManagedUser[]>("/api/admin/users"),
   setUserActive: (id: string, is_active: boolean) =>
-    request<{ id: string; is_active: boolean; cancelled_appointments: number }>(
+    request<{ id: string; is_active: boolean; cancelled_appointments: number; patients_notified: number }>(
       `/api/admin/users/${id}/active`,
       { method: "PATCH", body: JSON.stringify({ is_active }) }
     ),
   deleteUser: (id: string) =>
-    request<{ id: string; deleted: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
+    request<{ id: string; deleted: boolean; patients_notified: number }>(`/api/admin/users/${id}`, {
+      method: "DELETE",
+    }),
   demoLogin: (role: "patient" | "doctor" | "admin") =>
     request<{ token: string; user: any }>("/api/auth/demo", {
       method: "POST",

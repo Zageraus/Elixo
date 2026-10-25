@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { clearAuth } from "../lib/api";
+import NotificationBell from "./NotificationBell";
 
 interface DashboardHeaderProps {
   role: "patient" | "doctor" | "admin";
@@ -77,7 +78,7 @@ export default function DashboardHeader({ role, walletAddress, fullName }: Dashb
             </span>
           )}
 
-
+          <NotificationBell />
 
           <Link
             href="/"
