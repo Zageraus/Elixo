@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, ManagedUser } from "../lib/api";
 
 type RoleTab = "patient" | "doctor";
@@ -18,6 +19,7 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [deleting, setDeleting] = useState<ManagedUser | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -61,6 +63,7 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
     if (!deleting) return;
     setBusyId(deleting.id);
     setMessage(null);
+    setDeleteError(null);
     try {
       const res = await api.deleteUser(deleting.id);
       setUsers((prev) => prev.filter((x) => x.id !== deleting.id));
@@ -75,7 +78,8 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
       setDeleting(null);
       onChanged?.();
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Could not delete the account." });
+      // Shown inside the dialog, which stays open and covers the panel message.
+      setDeleteError(err.message || "Could not delete the account.");
     } finally {
       setBusyId(null);
     }
@@ -192,6 +196,7 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
                   onClick={() => {
                     setDeleting(u);
                     setConfirmText("");
+                    setDeleteError(null);
                   }}
                   className="text-xs font-semibold px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition disabled:opacity-50"
                 >
@@ -203,7 +208,10 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
         )}
       </div>
 
-      {deleting && (
+      {/* Portal to <body>: the panel's backdrop-filter would otherwise make
+          it the containing block for this fixed overlay, so the dialog
+          was positioned inside the (tall) panel and could open off-screen. */}
+      {deleting && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           onClick={() => busyId !== deleting.id && setDeleting(null)}
@@ -243,6 +251,11 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
                 className="mt-1.5 w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2.5 text-sm text-white outline-none focus:border-red-500"
               />
             </label>
+            {deleteError && (
+              <p role="alert" className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+                {deleteError}
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 type="button"
@@ -262,7 +275,8 @@ export default function UserManagement({ onChanged }: { onChanged?: () => void }
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );
