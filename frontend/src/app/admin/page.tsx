@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api, getUser } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
+import { formatINR } from "../../lib/payments";
 
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null);
@@ -27,6 +28,10 @@ export default function AdminDashboard() {
     { label: "AI RAG Analyses", value: analytics?.total_ai_analyses, icon: "🧠", color: "text-purple-300", bg: "bg-purple-500/15", border: "border-purple-500/30" },
     { label: "Confirmed Sepolia Tx", value: analytics?.confirmed_chain_txs, icon: "⛓️", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
     { label: "Pending On-Chain Tx", value: analytics?.pending_chain_txs, icon: "⏳", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
+    { label: "Revenue Collected", value: analytics ? formatINR(Number(analytics.total_revenue)) : undefined, icon: "💰", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+    { label: "Paid Consultations", value: analytics?.paid_payments, icon: "🧾", color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
+    { label: "Awaiting Payment", value: analytics?.awaiting_payment, icon: "⌛", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
+    { label: "Refunded", value: analytics ? formatINR(Number(analytics.total_refunded)) : undefined, icon: "↩️", color: "text-zinc-300", bg: "bg-zinc-500/10", border: "border-zinc-500/20" },
   ];
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -73,7 +78,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* KPI Grid (8 Stat Cards) */}
+      {/* KPI Grid (12 Stat Cards) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map((s, idx) => (
           <div

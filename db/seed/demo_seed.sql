@@ -49,8 +49,8 @@ from (values
 ) v(email, spec, lic, yrs, fee, bio)
 join users u on u.email = v.email;
 
-insert into doctor_profiles (user_id, specialization, license_number, years_experience, bio)
-select id, 'General Medicine', 'PENDING-' || left(id::text, 8), null, 'General physician.'
+insert into doctor_profiles (user_id, specialization, license_number, years_experience, consultation_fee, bio)
+select id, 'General Medicine', 'PENDING-' || left(id::text, 8), null, 500, 'General physician.'
 from users
 where email = 'ssanidhya886@gmail.com' and role = 'doctor'
 on conflict (user_id) do nothing;

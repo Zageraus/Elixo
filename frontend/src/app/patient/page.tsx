@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getUser, MedicationItem, DoctorOption } from "../../lib/api";
+import {
+  formatINR,
+  PAYMENT_METHOD_LABELS,
+  PaymentMethod,
+  PaymentSummary,
+} from "../../lib/payments";
 import DashboardHeader from "../../components/DashboardHeader";
 
 interface PrescriptionRecord {
@@ -67,6 +73,11 @@ export default function PatientDashboard() {
   } | null>(null);
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [specializationFilter, setSpecializationFilter] = useState("");
+  const [checkoutAppt, setCheckoutAppt] = useState<any | null>(null);
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("upi");
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<PaymentSummary | null>(null);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
   const [doctorsFailed, setDoctorsFailed] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -149,6 +160,37 @@ export default function PatientDashboard() {
       });
     } finally {
       setBooking(false);
+    }
+  };
+
+  const openCheckout = (appt: any) => {
+    setCheckoutAppt(appt);
+    setPayMethod("upi");
+    setPayError(null);
+    setReceipt(null);
+  };
+
+  const closeCheckout = () => {
+    if (paying) return;
+    setCheckoutAppt(null);
+  };
+
+  const handlePay = async () => {
+    if (!checkoutAppt) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      const payment = await api.payForAppointment(checkoutAppt.appointment_id, payMethod);
+      setReceipt(payment);
+      setAppointments((prev) =>
+        prev.map((a) =>
+          a.appointment_id === checkoutAppt.appointment_id ? { ...a, payment } : a
+        )
+      );
+    } catch (err: any) {
+      setPayError(err?.message ?? "Payment failed. Please try again.");
+    } finally {
+      setPaying(false);
     }
   };
 
@@ -471,17 +513,44 @@ export default function PatientDashboard() {
                     })}
                   </p>
                 </div>
-                <span
-                  className={`self-start sm:self-auto text-xs px-3 py-1 rounded-full font-semibold capitalize border ${
-                    a.appointment_status === "confirmed"
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                      : a.appointment_status === "completed"
-                      ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
-                      : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                  }`}
-                >
-                  {a.appointment_status}
-                </span>
+                <div className="self-start sm:self-auto flex flex-col items-start sm:items-end gap-2">
+                  <span
+                    className={`text-xs px-3 py-1 rounded-full font-semibold capitalize border ${
+                      a.appointment_status === "confirmed"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                        : a.appointment_status === "completed"
+                        ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                        : a.appointment_status === "cancelled" || a.appointment_status === "no_show"
+                        ? "bg-red-500/10 text-red-400 border-red-500/30"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    }`}
+                  >
+                    {a.appointment_status}
+                  </span>
+                  {a.payment?.status === "paid" ? (
+                    <span className="text-[11px] text-emerald-400">
+                      Paid {formatINR(a.payment.amount)} ·{" "}
+                      <span className="font-mono text-zinc-500">{a.payment.provider_ref}</span>
+                    </span>
+                  ) : a.payment?.status === "refunded" ? (
+                    <span className="text-[11px] text-zinc-400">
+                      Refunded {formatINR(a.payment.amount)}
+                    </span>
+                  ) : a.fee > 0 &&
+                    (a.appointment_status === "confirmed" || a.appointment_status === "completed") ? (
+                    <button
+                      type="button"
+                      onClick={() => openCheckout(a)}
+                      className="text-xs font-semibold px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white shadow-md hover:brightness-110 transition"
+                    >
+                      Pay {formatINR(a.fee)}
+                    </button>
+                  ) : a.fee > 0 && a.appointment_status === "requested" ? (
+                    <span className="text-[11px] text-zinc-500">
+                      Fee {formatINR(a.fee)} · pay after the doctor accepts
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ))
           )}
@@ -832,6 +901,126 @@ export default function PatientDashboard() {
           </div>
         </form>
       </section>
+
+      {/* Simulated checkout */}
+      {checkoutAppt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={closeCheckout}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="checkout-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md glass-card rounded-3xl border border-zinc-800 bg-[#0b0f1a] p-6 space-y-5 shadow-2xl"
+          >
+            {receipt ? (
+              <>
+                <div className="text-center space-y-2">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 flex items-center justify-center text-xl">
+                    ✓
+                  </div>
+                  <h2 id="checkout-title" className="text-lg font-bold text-white">
+                    Payment successful
+                  </h2>
+                  <p className="text-3xl font-black text-white">{formatINR(receipt.amount)}</p>
+                </div>
+                <dl className="text-xs divide-y divide-zinc-800 rounded-xl border border-zinc-800">
+                  {[
+                    ["Receipt", receipt.provider_ref],
+                    ["Doctor", checkoutAppt.doctor_name],
+                    ["Method", PAYMENT_METHOD_LABELS[receipt.method]],
+                    ["Paid on", new Date(receipt.paid_at).toLocaleString("en-IN")],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-4 px-4 py-2.5">
+                      <dt className="text-zinc-500">{label}</dt>
+                      <dd className="text-zinc-200 font-medium text-right">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <button
+                  type="button"
+                  onClick={closeCheckout}
+                  className="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 py-3 text-sm font-semibold text-white transition"
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h2 id="checkout-title" className="text-lg font-bold text-white">
+                    Pay consultation fee
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {checkoutAppt.doctor_name} ·{" "}
+                    {new Date(checkoutAppt.scheduled_at).toLocaleString("en-IN", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-900/80 border border-zinc-800 p-4 flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Amount</span>
+                  <span className="text-2xl font-black text-white">{formatINR(checkoutAppt.fee)}</span>
+                </div>
+
+                <fieldset className="space-y-2">
+                  <legend className="text-xs font-semibold text-zinc-300 mb-2">Payment method</legend>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={payMethod === m}
+                        onClick={() => setPayMethod(m)}
+                        className={`rounded-xl border py-2.5 text-xs font-semibold transition ${
+                          payMethod === m
+                            ? "border-cyan-500 bg-cyan-500/10 text-white"
+                            : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                        }`}
+                      >
+                        {PAYMENT_METHOD_LABELS[m]}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <p className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                  Test mode: no real money is charged and no payment details are collected.
+                </p>
+
+                {payError && (
+                  <p role="alert" className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+                    {payError}
+                  </p>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeCheckout}
+                    disabled={paying}
+                    className="flex-1 rounded-xl border border-zinc-700 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900 transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePay}
+                    disabled={paying}
+                    className="flex-[2] rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 py-3 text-sm font-bold text-white shadow-lg hover:brightness-110 transition disabled:opacity-50"
+                  >
+                    {paying ? "Processing…" : `Pay ${formatINR(checkoutAppt.fee)}`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

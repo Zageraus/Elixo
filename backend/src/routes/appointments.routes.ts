@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { supabaseAdmin, supabaseForRequest } from "../config/supabase.js";
 import { requireAuth } from "../middleware/auth.js";
+import { attachPayments } from "../services/payments.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -58,7 +59,12 @@ router.get("/", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  return res.json(data ?? []);
+  try {
+    return res.json(await attachPayments(data ?? []));
+  } catch (e: any) {
+    console.error("Failed to load payment details:", e);
+    return res.status(500).json({ error: "Failed to load payment details." });
+  }
 });
 
 // Request an appointment as a patient.

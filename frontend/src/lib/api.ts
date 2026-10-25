@@ -1,3 +1,5 @@
+import type { PaymentMethod, PaymentSummary } from "./payments";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export function getToken(): string | null {
@@ -88,6 +90,7 @@ export const api = {
     role: "patient" | "doctor";
     specialization?: string;
     license_number?: string;
+    consultation_fee?: number;
   }) =>
     request<{ token: string; user: any }>("/api/auth/register", {
       method: "POST",
@@ -116,6 +119,11 @@ export const api = {
     request("/api/appointments", { method: "POST", body: JSON.stringify(body) }),
   updateAppointmentStatus: (id: string, status: "confirmed" | "completed" | "cancelled" | "no_show") =>
     request(`/api/appointments/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  payForAppointment: (appointment_id: string, method: PaymentMethod) =>
+    request<PaymentSummary>("/api/payments", {
+      method: "POST",
+      body: JSON.stringify({ appointment_id, method }),
+    }),
   getReports: () => request<any[]>("/api/reports"),
   uploadReport: (form: FormData) => request("/api/reports", { method: "POST", body: form }),
   getPrescriptions: () => request<any[]>("/api/prescriptions"),

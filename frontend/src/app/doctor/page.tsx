@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { api, getUser, MedicationItem } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
+import { formatINR, PaymentSummary } from "../../lib/payments";
 
 interface AppointmentItem {
   appointment_id: string;
@@ -12,6 +13,8 @@ interface AppointmentItem {
   scheduled_at: string;
   status: string;
   patient_report_count: number;
+  fee: number | null;
+  payment: PaymentSummary | null;
 }
 
 interface PrescriptionRecord {
@@ -354,6 +357,19 @@ export default function DoctorDashboard() {
                     >
                       {a.status}
                     </span>
+                    {a.payment?.status === "paid" ? (
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-medium border bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                        Paid {formatINR(a.payment.amount)}
+                      </span>
+                    ) : a.payment?.status === "refunded" ? (
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-medium border bg-zinc-800 text-zinc-400 border-zinc-700">
+                        Refunded
+                      </span>
+                    ) : (a.status === "confirmed" || a.status === "completed") && (a.fee ?? 0) > 0 ? (
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-medium border bg-amber-500/10 text-amber-400 border-amber-500/30">
+                        Awaiting payment
+                      </span>
+                    ) : null}
                   </div>
                   <p className="text-xs text-zinc-400 mt-1">
                     {new Date(a.scheduled_at).toLocaleString("en-US", {

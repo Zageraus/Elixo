@@ -176,6 +176,7 @@ router.post("/register", async (req, res) => {
     role: z.enum(["patient", "doctor"]),
     specialization: z.string().trim().min(2).max(100).optional(),
     license_number: z.string().trim().min(2).max(50).optional(),
+    consultation_fee: z.number().positive().max(100000).optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -189,9 +190,15 @@ router.post("/register", async (req, res) => {
   const full_name = parsed.data.full_name;
   const isDoctor = parsed.data.role === "doctor";
 
-  // doctor_profiles.specialization and license_number are NOT NULL.
-  if (isDoctor && (!parsed.data.specialization || !parsed.data.license_number)) {
-    return res.status(400).json({ error: "Doctors must provide a specialization and license number." });
+  // doctor_profiles.specialization and license_number are NOT NULL, and the
+  // consultation fee is what patients pay once an appointment is accepted.
+  if (
+    isDoctor &&
+    (!parsed.data.specialization || !parsed.data.license_number || !parsed.data.consultation_fee)
+  ) {
+    return res.status(400).json({
+      error: "Doctors must provide a specialization, license number and consultation fee.",
+    });
   }
 
   try {
@@ -254,6 +261,7 @@ router.post("/register", async (req, res) => {
         user_id: user.id,
         specialization: parsed.data.specialization,
         license_number: parsed.data.license_number,
+        consultation_fee: parsed.data.consultation_fee,
       });
 
       if (profileError) {

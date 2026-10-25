@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [role, setRole] = useState<"patient" | "doctor">("patient");
   const [specialization, setSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
+  const [consultationFee, setConsultationFee] = useState("");
   const [authError, setAuthError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -38,7 +39,11 @@ export default function LoginPage() {
               full_name: fullName.trim(),
               role,
               ...(role === "doctor"
-                ? { specialization, license_number: licenseNumber.trim() }
+                ? {
+                    specialization,
+                    license_number: licenseNumber.trim(),
+                    consultation_fee: Number(consultationFee),
+                  }
                 : {}),
             })
           : await api.login({
@@ -272,6 +277,23 @@ export default function LoginPage() {
                     value={licenseNumber}
                     onChange={(event) => setLicenseNumber(event.target.value)}
                     placeholder="e.g. MCI-123456"
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label htmlFor="consultationFee" className="text-xs font-medium text-zinc-300">
+                    Consultation Fee (₹)
+                  </label>
+                  <input
+                    id="consultationFee"
+                    type="number"
+                    required
+                    min={1}
+                    max={100000}
+                    step={1}
+                    value={consultationFee}
+                    onChange={(event) => setConsultationFee(event.target.value)}
+                    placeholder="e.g. 800"
                     className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-white outline-none focus:border-purple-500"
                   />
                 </div>

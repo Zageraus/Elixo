@@ -9,6 +9,7 @@ import appointmentsRoutes from "./routes/appointments.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
 import prescriptionsRoutes from "./routes/prescriptions.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import paymentsRoutes from "./routes/payments.routes.js";
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/prescriptions", prescriptionsRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/payments", paymentsRoutes);
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
