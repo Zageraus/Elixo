@@ -115,7 +115,9 @@ export default function PatientDashboard() {
     e.preventDefault();
     setBooking(true);
     setBookingMessage(null);
-    const form = new FormData(e.currentTarget);
+    // React clears e.currentTarget once the handler awaits, so keep the element.
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     const doctorId = String(form.get("doctor_id") || "").trim();
     const localDateTime = String(form.get("scheduled_at") || "");
     const reason = String(form.get("reason") || "").trim();
@@ -137,7 +139,7 @@ export default function PatientDashboard() {
         type: "success",
         text: "Appointment request submitted successfully. Your request is pending until the doctor responds.",
       });
-      e.currentTarget.reset();
+      formEl.reset();
     } catch (err: any) {
       setBookingMessage({
         type: "error",
@@ -152,7 +154,8 @@ export default function PatientDashboard() {
     e.preventDefault();
     setUploading(true);
     setUploadMessage(null);
-    const form = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     try {
       await api.uploadReport(form);
       const updatedReports = await api.getReports();
@@ -161,7 +164,7 @@ export default function PatientDashboard() {
         type: "success",
         text: "Report uploaded, analyzed by AI, and anchored on Sepolia. You can view the AI summary below.",
       });
-      e.currentTarget.reset();
+      formEl.reset();
     } catch (err: any) {
       console.error(err);
       setUploadMessage({
