@@ -1,437 +1,401 @@
-# 🩺 HealthChain
+# 🩺 ELIXOR
 
-> **A decentralized, tamper-evident healthcare management platform secured by Ethereum wallet identity, smart contract cryptographic anchoring, and AI-powered longitudinal medical analysis.**
+> **A healthcare management platform built on a strictly designed PostgreSQL database: appointment booking, consultation payments, prescriptions, AI-summarised lab reports, and tamper-evident document anchoring on Ethereum.**
 
-[![Ethereum](https://img.shields.io/badge/Ethereum-Sepolia_Testnet-3c3c3d?logo=ethereum&logoColor=white)](https://ethereum.org/)
-[![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity&logoColor=white)](https://soliditylang.org/)
+ELIXOR (originally *HealthChain*) is a DBMS-focused full-stack project. Patients book doctors and pay consultation fees, doctors manage their queue and issue prescriptions, admins run the platform. Underneath, the database does the heavy lifting: normalised tables, constraints, triggers, analytical views and row-level security.
+
 [![Next.js](https://img.shields.io/badge/Next.js-14.2-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express&logoColor=white)](https://expressjs.com/)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_%2B_pgvector-3ecf8e?logo=supabase&logoColor=white)](https://supabase.com/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini_%2B_Embeddings-412991?logo=openai&logoColor=white)](https://openai.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_17-3ecf8e?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Ollama](https://img.shields.io/badge/AI-Ollama_(local)-000000)](https://ollama.com/)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity&logoColor=white)](https://soliditylang.org/)
 
 ---
 
-## 📌 Table of Contents
+## 📌 Contents
 
-- [Overview](#-overview)
-- [System Architecture](#-system-architecture)
-- [The Three Core Workflows](#-the-three-core-workflows)
-- [Database & Security Engineering (DBMS Focus)](#-database--security-engineering-dbms-focus)
-- [Smart Contract Specification (`MedicalAudit.sol`)](#-smart-contract-specification-medicalauditsol)
-- [Role-Based Interfaces](#-role-based-interfaces)
-- [Repository Structure](#-repository-structure)
-- [API Reference](#-api-reference)
-- [Environment Variables](#-environment-variables)
-- [Getting Started](#-getting-started)
-- [Running Tests & Builds](#-running-tests--builds)
-- [Evaluation & Presentation Defense (FAQ)](#-evaluation--presentation-defense-faq)
-- [Roadmap & Production Considerations](#-roadmap--production-considerations)
-
----
-
-## 🌟 Overview
-
-Modern electronic health record (EHR) systems face three critical vulnerabilities:
-1. **Fragile, centralized credential systems** subject to credential stuffing and phishing attacks.
-2. **Unverifiable document integrity**, making medical records vulnerable to silent modification or unauthorized alteration.
-3. **Fragmented clinical context**, where doctors must read historical records manually without rapid longitudinal summarization.
-
-**HealthChain** resolves these challenges by bridging **Web3 identity**, **cryptographic blockchain auditability**, and **Retrieval-Augmented Generation (RAG)** atop a strictly normalized **PostgreSQL** database:
-
-- 🔑 **Passwordless Web3 Authentication**: Users authenticate using their Ethereum wallets via cryptographically signed challenge nonces (EIP-4361 / SIWE). No credentials or passwords ever cross the wire.
-- ⛓️ **Zero-Knowledge Document Anchoring**: SHA-256 fingerprints of medical reports and prescriptions are permanently anchored on the Ethereum Sepolia blockchain. Documents remain fully private off-chain, while any party can prove authenticity and zero tampering.
-- 🧠 **AI-Assisted Clinical Decision Support**: Uploaded clinical records are converted into dense vector embeddings using OpenAI (`text-embedding-3-small`) and queried via PostgreSQL's native `pgvector` extension to contextualize incoming lab reports with patient longitudinal history (`gpt-4o-mini`).
+- [Features by role](#-features-by-role)
+- [Architecture](#-architecture)
+- [Core workflows](#-core-workflows)
+- [Database design](#-database-design)
+- [Smart contract](#-smart-contract-medicalauditsol)
+- [API reference](#-api-reference)
+- [Repository structure](#-repository-structure)
+- [Getting started](#-getting-started)
+- [Environment variables](#-environment-variables)
+- [Demo data](#-demo-data)
+- [Checks and tests](#-checks-and-tests)
+- [Current status and limitations](#-current-status-and-limitations)
+- [FAQ](#-faq)
+- [Roadmap](#-roadmap)
 
 ---
 
-## 🏗️ System Architecture
+## 🌟 Features by role
+
+| Role | What they can do |
+| :--- | :--- |
+| **Patient** | Register and sign in with email · book appointments, filtering doctors by specialization · pay the consultation fee once the doctor accepts (simulated checkout with receipt) · view prescriptions with the prescribing doctor · upload medical reports (PDF/images) and get an AI summary from the report text · open their uploaded PDFs through short-lived links · see notifications |
+| **Doctor** | Register with specialization, license number and consultation fee · see their own patient queue with payment status · **accept, decline or complete** appointments · write prescriptions · see notifications for new requests |
+| **Admin** | Platform dashboard with 12 live metrics (patients, doctors, appointments, reports, AI analyses, blockchain anchors, revenue, paid consultations, awaiting payment, refunds) and a weekly doctor-load chart · **user management**: deactivate/reactivate or permanently delete patients and doctors, with affected patients notified automatically |
+
+Everyone gets a 🔔 notification bell with an unread count.
+
+---
+
+## 🏗️ Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client ["Client Layer"]
-        User["User (MetaMask Wallet)"]
-        UI["Next.js 14 Web App<br/>(Tailwind CSS + Zustand)"]
-        User <--> UI
+    subgraph Client ["Client (Next.js 14 + Tailwind)"]
+        UI["Patient / Doctor / Admin dashboards"]
     end
 
-    subgraph API ["Backend Gateway (Express + TypeScript)"]
-        AuthRoute["Auth Handler<br/>(SIWE Nonce & Signature)"]
-        RecordRoute["Reports & Prescriptions"]
-        AIService["AI Engine<br/>(Embeddings & RAG)"]
-        ChainService["Ethers.js Contract Service"]
-        
-        UI -->|EIP-4361 Signature| AuthRoute
-        UI -->|Upload Report / Book Visit| RecordRoute
-        RecordRoute --> AIService
-        RecordRoute --> ChainService
+    subgraph API ["Backend (Express + TypeScript, :4000)"]
+        Auth["Auth: email + password (Supabase Auth)<br/>wallet signature (API only)"]
+        Routes["Appointments · Payments · Reports<br/>Prescriptions · Notifications · Admin"]
+        AI["AI service"]
+        Chain["Blockchain service (ethers.js)"]
     end
 
-    subgraph Database ["Data & Storage Layer (Supabase PostgreSQL)"]
-        UsersTab[("users & profiles<br/>(3NF Schema)")]
-        AuditTab[("audit_logs<br/>(Automated Triggers)")]
-        VectorsTab[("ai_analyses<br/>(pgvector ivfflat)")]
-        ViewsTab[("Analytical Views<br/>v_patient_dashboard<br/>v_admin_analytics")]
-        Storage[("Supabase Storage<br/>(medical-reports bucket)")]
+    subgraph DB ["Supabase"]
+        PG[("PostgreSQL<br/>tables · triggers · views · RLS")]
+        Store[("Storage: private<br/>medical-reports bucket")]
+        SAuth[("Supabase Auth<br/>email logins")]
     end
 
-    subgraph External ["External Decoupled Systems"]
-        Sepolia["Ethereum Sepolia Testnet<br/>MedicalAudit.sol"]
-        OpenAI["OpenAI API<br/>(text-embedding-3-small & gpt-4o-mini)"]
-    end
+    Ollama["Ollama (local)<br/>qwen2.5:1.5b-instruct"]
+    Sepolia["Ethereum Sepolia<br/>MedicalAudit.sol"]
 
-    AuthRoute -->|Verify Signature & Issue JWT| UsersTab
-    RecordRoute -->|Enforce RLS & Store Off-Chain| UsersTab
-    RecordRoute -->|Store Encrypted File| Storage
-    RecordRoute -->|Audit Trail Trigger| AuditTab
-    AIService -->|Match Cosine Similarity| VectorsTab
-    AIService <-->|Generate Summary & Vectors| OpenAI
-    ChainService -->|anchorRecord(recordId, hash)| Sepolia
+    UI -->|JWT| Routes
+    UI --> Auth
+    Auth --> SAuth
+    Auth -->|issue app JWT| PG
+    Routes -->|RLS-scoped queries| PG
+    Routes -->|files + signed links| Store
+    Routes --> AI --> Ollama
+    Routes --> Chain -->|anchorRecord, optional| Sepolia
 ```
 
----
-
-## 🔄 The Three Core Workflows
-
-### 1. Web3 Passwordless Authentication
-Traditional username/password schemes and centralized OAuth providers introduce points of failure. HealthChain treats an **Ethereum public address** as an immutable identity:
-1. **Nonce Challenge**: Client requests a one-time cryptographic nonce from `/api/auth/nonce`.
-2. **Off-Chain Signature**: The user signs a human-readable challenge statement via MetaMask (gas-free, EIP-4361 compliant).
-3. **Cryptographic Recovery**: The backend uses `ethers.verifyMessage` to recover the signer's public address.
-4. **JWT Issuance**: Once confirmed against `auth_nonces`, the backend issues a signed JWT containing custom claims (`app_user_id`, `app_role`) consumed directly by Supabase for Row-Level Security (RLS).
-
-### 2. Longitudinal AI Medical Analysis (RAG)
-When a medical report is received:
-1. **Extraction**: Raw clinical text and test values are parsed.
-2. **Dense Vectorization**: The text is passed to `text-embedding-3-small` (1,536 dimensions).
-3. **Historical Retrieval**: Postgres executes `match_patient_analyses()` using `pgvector` cosine similarity (`vector_cosine_ops`) to retrieve historical abnormalities and lab trends for that specific patient.
-4. **Clinical Decision Prompt**: The new report plus the longitudinal context is passed to `gpt-4o-mini` with strict system instructions to generate structured JSON flags (`summary`, `flags`, `severity`, `confidence`).
-5. **Storage**: The structured analysis and vector embedding are saved in `ai_analyses`.
-
-### 3. Cryptographic Medical Document Audit
-Patient health data is governed by strict privacy standards (e.g., HIPAA/GDPR). Storing raw Protected Health Information (PHI) on a public blockchain is both cost-prohibitive and a serious compliance breach:
-1. **Off-Chain Storage**: The document is stored in Supabase private bucket storage (`medical-reports`).
-2. **Document Fingerprint**: A deterministic SHA-256 hash is computed over the document contents.
-3. **On-Chain Anchor**: The backend's authorized signer wallet executes `MedicalAudit.anchorRecord(recordId, dataHash, recordType)` on Ethereum Sepolia.
-4. **Public Verification**: Any stakeholder can verify that a medical document has not been tampered with by recalculating its SHA-256 hash and calling the view function `verifyRecord(recordId, hash)` on the smart contract.
+**One token, two consumers.** After login the backend issues a JWT carrying `app_user_id` and `app_role`, signed with the same secret Supabase uses. The API uses it to authorise requests, and Postgres reads the same claims through `auth.jwt()` in its RLS policies. The backend also checks on every request that the account is still active, so a deactivated user loses access immediately.
 
 ---
 
-## 💾 Database & Security Engineering (DBMS Focus)
+## 🔄 Core workflows
 
-The PostgreSQL data layer is architected according to strict relational database design principles:
+### 1. Booking and accepting appointments
+1. A patient picks a specialization and doctor and requests a time (`requested`). The doctor is notified by a database trigger.
+2. The doctor accepts (`confirmed`), declines (`cancelled`) or later completes the visit. The patient is notified each time, with times shown in IST.
 
-### 1. Third Normal Form (3NF) Normalization
-- Role-specific properties are decoupled into 1:1 extension tables (`doctor_profiles` and `patient_profiles`) rather than stuffing nullable columns into a monolithic `users` table.
-- Append-only records (`ai_analyses`, `blockchain_transactions`, `audit_logs`) are modeled in isolated tables with strict foreign keys to preserve normalization.
+### 2. Consultation payments (simulated)
+1. Booking is free. Once a visit is `confirmed` (or `completed`), the patient sees **Pay ₹X**.
+2. Checkout offers UPI, card or net banking and is clearly marked as test mode: **no gateway is called and no payment details are collected**.
+3. The server always takes the amount from the doctor's `consultation_fee`, never from the browser. One payment per appointment is enforced by a unique constraint.
+4. If a paid appointment is later cancelled, the trigger `trg_refund_on_cancel` marks the payment `refunded`.
 
-### 2. Enterprise Constraints & Role Validation
-- **Regex Format Enforcement**:
-  - `chk_wallet_format`: `wallet_address ~* '^0x[a-f0-9]{40}$'`
-  - `chk_file_hash_format`: `file_hash ~* '^[a-f0-9]{64}$'`
-- **Domain Integrity**: `blood_group` enum check (`A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`).
-- **Entity Invariants**: `chk_appt_roles` prevents a user from scheduling an appointment with themselves (`patient_id <> doctor_id`).
-- **Mutually Exclusive Transaction Targets**: `chk_one_target` enforces that a transaction entry references either a `report_id` or a `prescription_id`, never both or neither.
+### 3. Medical reports and AI summaries
+1. The patient uploads a file (≤ 15 MB). It goes to the private `medical-reports` bucket and its SHA-256 hash is stored with the report.
+2. If the patient pastes the report's text, it is sent to a **local Ollama model** (`qwen2.5:1.5b-instruct`), which returns a JSON summary, flagged findings, severity and confidence. The result is validated and stored in `ai_analyses`.
+3. The upload message reports what actually happened: AI summary added, skipped (no text) or failed, and whether the file was anchored.
+4. **View PDF** asks the backend for the file. It checks the viewer may see the report (patient, assigned doctor or admin) and returns a signed link that expires after 60 seconds.
 
-### 3. Automated Triggers & Change Capture
-- **`trg_users_updated_at` & `trg_appointments_updated_at`**: Automatic timestamp maintenance.
-- **`fn_audit_trigger`**: Fired `AFTER INSERT OR UPDATE OR DELETE` across all clinical tables. Automatically captures the operating user ID (`app.current_user_id`), operation (`INSERT`/`UPDATE`/`DELETE`), entity table, and full JSON `old` vs `new` diffs.
-- **`fn_enforce_appointment_doctor_role`**: Database-level role verification ensuring that any UUID referenced as `doctor_id` strictly holds `role = 'doctor'`.
+> The AI never sees the PDF itself, only the text the patient provides. No real patient data is needed to demo it.
 
-### 4. Materialized & Pre-Joined Analytical Views
-- **`v_patient_dashboard`**: Pre-joins patient appointments with doctor details and specializations.
-- **`v_doctor_dashboard`**: Aggregates assigned appointments with counts of prior patient lab reports.
-- **`v_report_with_analysis`**: Multi-table join combining medical reports, latest AI structured summaries, and on-chain transaction verification states.
-- **`v_admin_analytics`**: High-level platform metrics (total patients, doctors, reports, anchored hashes).
-- **`v_doctor_weekly_load`**: Aggregates appointment volume per physician for capacity monitoring.
+### 4. Tamper-evident anchoring on Ethereum (optional)
+When `BLOCKCHAIN_ENABLED=true`, the SHA-256 hash of each report (and of each prescription's medications) is written to `MedicalAudit.anchorRecord()` on Sepolia, and the transaction is tracked in `blockchain_transactions`. Anyone can later recompute a document's hash and call `verifyRecord()` to prove it hasn't changed. Documents never go on-chain. With anchoring off, cards honestly show **Not anchored**.
 
-### 5. Native In-Database RAG via `pgvector`
-Rather than introducing external vector database dependencies (e.g., Pinecone), embeddings are stored directly in `ai_analyses(embedding vector(1536))` indexed using an **IVFFlat** cosine index (`lists = 100`):
-```sql
-create or replace function match_patient_analyses(
-    p_patient_id uuid,
-    p_query_embedding vector(1536),
-    p_match_threshold float default 0.65,
-    p_match_count int default 3
-)
-returns table (
-    report_id uuid,
-    report_title text,
-    summary text,
-    similarity float
-) language sql stable as $$
-    select
-        mr.id as report_id,
-        mr.title as report_title,
-        ai.summary,
-        1 - (ai.embedding <=> p_query_embedding) as similarity
-    from ai_analyses ai
-    join medical_reports mr on mr.id = ai.report_id
-    where mr.patient_id = p_patient_id
-      and (1 - (ai.embedding <=> p_query_embedding)) > p_match_threshold
-    order by ai.embedding <=> p_query_embedding
-    limit p_match_count;
-$$;
-```
-
-### 6. Row-Level Security (RLS) Defense
-Access control is enforced directly by PostgreSQL policies using custom JWT claims (`app_user_id`, `app_role`):
-- **Patients**: Can only query their own reports, prescriptions, and appointment records.
-- **Doctors**: Restricted to accessing data for patients with whom they have an active appointment or clinical relationship.
-- **Admins**: Granted cross-cutting analytics access.
+### 5. Admin user management
+- **Deactivate** blocks sign-in, hides a doctor from booking, cancels the user's upcoming visits (refunding paid ones) and keeps every record. **Reactivate** restores access.
+- **Delete permanently** (type `DELETE` to confirm) removes the user and, through cascades, their appointments, prescriptions, reports, payments, files and Supabase Auth login. Audit-log rows are kept with the user link cleared.
+- When a **doctor** is deactivated or deleted, every patient with an appointment with them gets one notification; those with upcoming visits are told they were cancelled (and refunded), and on deletion are asked to choose a different doctor.
 
 ---
 
-## 📜 Smart Contract Specification (`MedicalAudit.sol`)
+## 💾 Database design
 
-The Solidity contract is deployed on **Ethereum Sepolia** (`0.8.24`, EVM target `paris`):
+The schema lives in `db/migrations/` (also bundled into `db/ALL_IN_ONE_SETUP.sql`).
+
+### Tables (3NF)
+`users` · `doctor_profiles` · `patient_profiles` · `appointments` · `payments` · `medical_reports` · `ai_analyses` · `prescriptions` · `blockchain_transactions` · `notifications` · `audit_logs` · `auth_nonces`
+
+Role-specific data lives in 1:1 profile tables instead of nullable columns on `users`. Append-only data (AI analyses, chain transactions, audit logs) sits in its own tables with foreign keys.
+
+### Constraints
+| Constraint | Rule |
+| :--- | :--- |
+| `chk_file_hash_format` | report hashes are 64-char hex SHA-256 |
+| `blood_group` check | only `A±`, `B±`, `AB±`, `O±` |
+| `chk_appt_roles`, `chk_presc_roles`, `chk_payment_roles` | nobody books, prescribes for or pays themselves |
+| `chk_one_target` | a chain transaction references exactly one report *or* prescription |
+| `payments.appointment_id` unique | one payment per appointment |
+| `amount > 0`, `chk_refund_time` | refunds always carry a timestamp, paid rows never do |
+| `doctor_profiles.license_number` unique | no duplicate licenses |
+
+### Triggers
+| Trigger | What it does |
+| :--- | :--- |
+| `trg_users_updated_at`, `trg_appointments_updated_at` | maintain `updated_at` |
+| `fn_audit_trigger` on reports, prescriptions, appointments, payments, user role changes | writes operation, table and full old/new JSON to `audit_logs` |
+| `trg_check_appt_roles` | `doctor_id` must be a doctor, `patient_id` a patient |
+| `trg_notify_appointment`, `trg_notify_report`, `trg_notify_prescription` | create notifications (times in IST) |
+| `trg_refund_on_cancel` | cancelling a paid appointment refunds it |
+
+The audit, notification, role-check and refund trigger functions are `SECURITY DEFINER` (migrations 006, 008, 009) so their system writes, such as audit rows, aren't blocked by the user's RLS.
+
+### Views
+| View | Purpose |
+| :--- | :--- |
+| `v_patient_dashboard` / `v_doctor_dashboard` | appointments pre-joined with names, specialization and report counts |
+| `v_report_with_analysis` | each report with its latest AI analysis and chain status |
+| `v_admin_analytics` | platform-wide metrics, including revenue and refunds |
+| `v_doctor_weekly_load` | appointments per doctor per week |
+
+Views run with their owner's rights, so the backend additionally filters view results to the signed-in user.
+
+### Row-level security
+Every table has RLS enabled. Patients see only their own rows, doctors see rows for their own patients, admins see everything, notifications are owner-only, and `auth_nonces` is closed to public roles (backend only).
+
+### Migrations
+| File | Change |
+| :--- | :--- |
+| `001`–`005` | core schema, triggers, views, RLS, pgvector match function |
+| `006_trigger_security_definer` | trigger functions run as owner so RLS doesn't block audit/notification writes |
+| `007_auth_nonces_rls` | lock down sign-in nonces |
+| `008_payments` | payments table, refund trigger, payment metrics in admin analytics |
+| `009_appointment_notifications` | IST times; no duplicate notices when a doctor is deactivated |
+| `010_blockchain_tx_cascade` | chain transactions are removed with their document (fixes deleting anchored records) |
+
+---
+
+## 📜 Smart contract (`MedicalAudit.sol`)
+
+Solidity `0.8.24`, deployed with Hardhat to Sepolia.
 
 ```solidity
-contract MedicalAudit {
-    struct AuditRecord {
-        bytes32 dataHash;      // sha256 fingerprint of off-chain document
-        address submittedBy;   // Backend signer address
-        uint256 timestamp;     // Block timestamp of anchoring
-        string recordType;     // "report" | "prescription"
-    }
-
-    mapping(bytes32 => AuditRecord) public records;
-    event RecordAnchored(bytes32 indexed recordId, bytes32 dataHash, string recordType, uint256 timestamp);
-
-    function anchorRecord(bytes32 recordId, bytes32 dataHash, string calldata recordType) external onlyAuthorized;
-    function verifyRecord(bytes32 recordId, bytes32 dataHash) external view returns (bool);
-    function getRecord(bytes32 recordId) external view returns (AuditRecord memory);
-}
+function anchorRecord(bytes32 recordId, bytes32 dataHash, string calldata recordType) external onlyAuthorized;
+function verifyRecord(bytes32 recordId, bytes32 dataHash) external view returns (bool);
+function getRecord(bytes32 recordId) external view returns (AuditRecord memory);
 ```
 
-- **Gas Optimization**: Stores only 32-byte fixed `bytes32` hashes instead of variable strings.
-- **Immutable & Non-Overwritable**: Reverts if `records[recordId].timestamp != 0` to preserve tamper-proof history.
-- **Access Control**: Restricted via `onlyAuthorized` modifier to approved backend transaction relayers.
+- Stores only a 32-byte hash, the submitter and a timestamp per record. No health data.
+- Records can't be overwritten: re-anchoring the same `recordId` reverts.
+- Only the owner and authorised backend signers can anchor.
 
 ---
 
-## 🖥️ Role-Based Interfaces
+## 📡 API reference
 
-| Portal | Primary Capabilities |
-| :--- | :--- |
-| **Patient Portal** | Connect MetaMask wallet, view clinical history, review AI-synthesized summaries, inspect live Sepolia Etherscan transaction proofs, and upload lab files. |
-| **Doctor Portal** | Review assigned patients, examine historical lab reports with automated anomaly flags, and issue digital prescriptions. |
-| **Admin Portal** | System overview displaying aggregate throughput metrics, system-wide transaction counts, provider workload charts, and system audit logs. |
+All routes except `/health` and `/api/auth/*` need `Authorization: Bearer <token>`.
+
+### Auth — `/api/auth`
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `POST` | `/register` | email sign-up as patient or doctor (doctors also send `specialization`, `license_number`, `consultation_fee`) |
+| `POST` | `/login` | email + password login |
+| `POST` | `/nonce`, `/verify` | wallet sign-in: get a one-time message, then verify its signature (`admin_key` optionally grants admin) |
+| `POST` | `/demo` | role switcher for local demos, only when `NODE_ENV=development` |
+
+### Appointments — `/api/appointments`
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/doctors` | active doctors with specialization (patients only) |
+| `GET` | `/` | the signed-in patient's or doctor's appointments, with fee and payment |
+| `POST` | `/` | request an appointment (patients) |
+| `PATCH` | `/:id/status` | `confirmed` / `completed` / `cancelled` / `no_show` (assigned doctor or admin) |
+
+### Payments — `/api/payments`
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `POST` | `/` | pay for a confirmed or completed appointment (`{ appointment_id, method }`; patients only) |
+
+### Reports — `/api/reports`
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `POST` | `/` | upload (multipart `file`, `patient_id`, `title`, `report_type`, optional `raw_text`); stores, hashes, analyses, optionally anchors |
+| `GET` | `/` | reports visible to the user, with AI summary, chain status and `has_file` |
+| `GET` | `/:id` | one report |
+| `GET` | `/:id/file` | 60-second signed link to the stored file |
+
+### Prescriptions — `/api/prescriptions`
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/` | prescriptions visible to the user, with patient/doctor names and chain transactions |
+| `POST` | `/` | issue a prescription (doctors, admins) |
+
+### Notifications — `/api/notifications`
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/` | latest 50 notifications for the user |
+| `PATCH` | `/read-all`, `/:id/read` | mark all / one as read |
+
+### Admin — `/api/admin` (admins only)
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/analytics`, `/doctor-load`, `/audit-logs` | dashboard data |
+| `GET` | `/users` | patients and doctors with linked record counts |
+| `PATCH` | `/users/:id/active` | deactivate / reactivate (`{ is_active }`) |
+| `DELETE` | `/users/:id` | permanent delete |
+| `PATCH` | `/users/:id/role` | change a user's role |
 
 ---
 
-## 📂 Repository Structure
+## 📂 Repository structure
 
 ```text
-healthchain/
-├── contracts/                  # Hardhat Ethereum workspace
-│   ├── contracts/
-│   │   └── MedicalAudit.sol    # Solidity document anchoring smart contract
-│   ├── scripts/
-│   │   └── deploy.ts           # Sepolia deployment script
-│   ├── test/
-│   │   └── MedicalAudit.test.ts # Hardhat unit tests
-│   ├── hardhat.config.ts       # Network & optimizer configuration
-│   └── tsconfig.json           # Contract TypeScript configuration
-│
-├── backend/                    # Express + TypeScript REST API
-│   ├── src/
-│   │   ├── config/             # Supabase client & environment configuration
-│   │   ├── middleware/         # SIWE verification, JWT decoding, Rate limiting
-│   │   ├── routes/             # auth, appointments, reports, prescriptions, admin
-│   │   ├── services/           # ai.service.ts, blockchain.service.ts
-│   │   └── index.ts            # Server entrypoint
-│   └── tsconfig.json
-│
-├── frontend/                   # Next.js 14 Web Application
-│   ├── src/
-│   │   ├── app/                # App Router (pages: /, /patient, /doctor, /admin)
-│   │   ├── hooks/              # useWalletAuth hook (MetaMask SIWE flow)
-│   │   └── lib/                # API client & ethers helpers
-│   └── tailwind.config.ts
-│
-├── db/                         # PostgreSQL / Supabase Migration Layer
-│   ├── migrations/
-│   │   ├── 001_core_schema.sql # 3NF tables, constraints, enums
-│   │   ├── 002_triggers.sql    # Audit logging & role triggers
-│   │   ├── 003_views.sql       # Dashboard analytical views
-│   │   ├── 004_rls_policies.sql# PostgreSQL Row-Level Security
-│   │   └── 005_rag_function.sql# pgvector search procedure
-│   └── seed/
-│       └── seed.sql            # Demo users, doctors, and appointments
-│
-├── ai/                         # Standalone Python RAG demonstration
-│   ├── rag_demo.py             # Reproduces the RAG pipeline in Python
-│   └── requirements.txt
-│
-└── docs/                       # Architectural notes and presentation guides
-    └── presentation_notes.md
+├── backend/              Express + TypeScript API
+│   └── src/
+│       ├── config/       Supabase clients (service role + per-request RLS client)
+│       ├── middleware/   JWT issue/verify, active-account check, role guards
+│       ├── routes/       auth, appointments, payments, reports, prescriptions, notifications, admin
+│       └── services/     ai (Ollama), blockchain (ethers), payments
+├── frontend/             Next.js 14 app
+│   └── src/
+│       ├── app/          / (login + landing), /patient, /doctor, /admin
+│       ├── components/   DashboardHeader, NotificationBell, UserManagement
+│       └── lib/          API client, payments helpers, specializations list
+├── db/
+│   ├── migrations/       001–010
+│   ├── seed/             seed.sql, demo_seed.sql, demo_payments.sql
+│   └── ALL_IN_ONE_SETUP.sql
+├── contracts/            Hardhat project with MedicalAudit.sol, deploy script and tests
+├── ai/                   standalone Python RAG demo (OpenAI-based, for presentations)
+└── docs/                 presentation notes
 ```
 
 ---
 
-## 📡 API Reference
+## 🚀 Getting started
 
-### Authentication (`/api/auth`)
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/auth/nonce` | Generate a 5-minute single-use nonce for wallet challenge. |
-| `POST` | `/api/auth/verify` | Verify wallet signature (`ethers.verifyMessage`), mint role-scoped JWT. |
+### Prerequisites
+- Node.js 20+
+- A Supabase project
+- [Ollama](https://ollama.com/download) for AI summaries (optional; everything else works without it)
 
-### Medical Reports (`/api/reports`)
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/reports/upload` | Upload report, compute SHA-256 hash, trigger RAG analysis & Sepolia anchor. |
-| `GET` | `/api/reports/:id` | Fetch report details with AI analysis and on-chain transaction status. |
-| `GET` | `/api/reports/patient/:patientId` | List reports for a patient (enforced by RLS). |
+### 1. Database (Supabase)
+1. In the **SQL Editor**, run `db/ALL_IN_ONE_SETUP.sql` (schema, triggers, views, RLS, migrations 006–010 and base seed data).
+2. Optionally run `db/seed/demo_seed.sql`, then `db/seed/demo_payments.sql`, for a realistic demo dataset.
+3. Create a **private** storage bucket named `medical-reports` (Storage → New bucket), or run:
+   ```sql
+   insert into storage.buckets (id, name, public, file_size_limit)
+   values ('medical-reports', 'medical-reports', false, 15728640);
+   ```
+4. Note your project URL, anon key, service-role key and JWT secret (Project Settings → API).
 
-### Appointments & Prescriptions (`/api/appointments`, `/api/prescriptions`)
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/appointments` | Book appointment with doctor verification. |
-| `GET` | `/api/appointments/my` | Fetch scheduled visits for logged-in user. |
-| `POST` | `/api/prescriptions` | Create structured medication prescription. |
-
-### Admin Analytics (`/api/admin`)
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/admin/analytics` | Returns aggregated metrics from `v_admin_analytics`. |
-| `GET` | `/api/admin/doctor-load` | Returns provider workload distribution from `v_doctor_weekly_load`. |
-
----
-
-## ⚙️ Environment Variables
-
-### Backend (`backend/.env`)
-```env
-PORT=4000
-NODE_ENV=development
-JWT_SECRET=your_supabase_jwt_secret
-
-# Supabase Credentials (Project Settings -> API)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret
-SUPABASE_ANON_KEY=your_anon_public_key
-
-# Ethereum Sepolia Testnet
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
-AUDIT_CONTRACT_ADDRESS=0xYourDeployedMedicalAuditContractAddress
-AUDIT_SIGNER_PRIVATE_KEY=your_testnet_account_private_key
-
-# OpenAI
-OPENAI_API_KEY=sk-your-openai-api-key
-EMBEDDING_MODEL=text-embedding-3-small
-CHAT_MODEL=gpt-4o-mini
-
-# CORS
-FRONTEND_ORIGIN=http://localhost:3000
-```
-
-### Frontend (`frontend/.env.local`)
-```env
-NEXT_PUBLIC_API_URL=http://localhost:4000
-```
-
-### Contracts (`contracts/.env`)
-```env
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
-AUDIT_SIGNER_PRIVATE_KEY=your_testnet_account_private_key
-```
-
----
-
-## 🚀 Getting Started
-
-### 1. Database Setup (Supabase)
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Open the **SQL Editor** in the Supabase Dashboard.
-3. Run the migrations in `db/migrations/` sequentially:
-   - `001_core_schema.sql`
-   - `002_triggers.sql`
-   - `003_views.sql`
-   - `004_rls_policies.sql`
-   - `005_rag_function.sql`
-   - *(Optional)* `db/seed/seed.sql` to populate sample users and appointments.
-4. Go to **Storage**, click **New Bucket**, and create a bucket named `medical-reports` (set to Private).
-5. Copy your **Project URL**, **Anon Key**, **Service Role Key**, and **JWT Secret** (under API / JWT Settings).
-
-### 2. Deploy Smart Contract
+### 2. AI model (optional)
 ```bash
-cd contracts
-npm install
-npx hardhat test
-npx hardhat run scripts/deploy.ts --network sepolia
+ollama pull qwen2.5:1.5b-instruct
 ```
-*Copy the outputted contract address to `backend/.env` under `AUDIT_CONTRACT_ADDRESS`.*
+Ollama runs in the background after installing; the backend talks to it at `http://127.0.0.1:11434`.
 
-### 3. Start Backend API
+### 3. Backend
 ```bash
 cd backend
-cp .env.example .env     # Populate your keys as shown above
+cp .env.example .env     # fill in the values below
 npm install
-npm run dev              # Server runs at http://localhost:4000
+npm run dev              # http://localhost:4000
 ```
 
-### 4. Start Frontend Client
+### 4. Frontend
 ```bash
 cd frontend
 cp .env.local.example .env.local
 npm install
-npm run dev              # Web client runs at http://localhost:3000
+npm run dev              # http://localhost:3000
+```
+
+### 5. Smart contract (optional)
+```bash
+cd contracts
+npm install
+npm test
+npm run deploy:sepolia   # then set AUDIT_CONTRACT_ADDRESS and BLOCKCHAIN_ENABLED=true in backend/.env
 ```
 
 ---
 
-## 🧪 Running Tests & Builds
+## ⚙️ Environment variables
 
-To verify the integrity of the full repository:
+### `backend/.env`
+| Variable | Required | Purpose |
+| :--- | :---: | :--- |
+| `PORT` | | API port (default `4000`) |
+| `NODE_ENV` | | `development` enables `/api/auth/demo` |
+| `JWT_SECRET` | ✅ | must equal your Supabase JWT secret so RLS accepts the tokens |
+| `SUPABASE_URL` | ✅ | project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | server-only key for trusted operations |
+| `SUPABASE_ANON_KEY` | ✅ | used for per-request RLS queries and password login |
+| `FRONTEND_ORIGIN` | ✅ | CORS origin, e.g. `http://localhost:3000` |
+| `OLLAMA_URL` | | default `http://127.0.0.1:11434` |
+| `LOCAL_CHAT_MODEL` | | default `qwen2.5:1.5b-instruct` |
+| `BLOCKCHAIN_ENABLED` | | `true` to anchor hashes on Sepolia |
+| `SEPOLIA_RPC_URL`, `AUDIT_CONTRACT_ADDRESS`, `AUDIT_SIGNER_PRIVATE_KEY` | when anchoring | RPC endpoint, deployed contract, authorised signer |
+| `ADMIN_REGISTRATION_KEY` | | passcode that lets a wallet sign-in become admin |
+
+### `frontend/.env.local`
+| Variable | Purpose |
+| :--- | :--- |
+| `NEXT_PUBLIC_API_URL` | backend URL, e.g. `http://localhost:4000` |
+
+Never commit real `.env` files; `.gitignore` excludes them.
+
+---
+
+## 🧪 Demo data
+
+`demo_seed.sql` adds 8 doctors across specializations (Dermatology, Orthopedics, Pediatrics, Neurology, Gynecology & Obstetrics, Endocrinology, Psychiatry, Pulmonology), 6 patients with profiles, ~20 appointments between late September and mid November 2026, prescriptions, and lab/imaging reports with hand-written AI summaries (tagged `model_used = 'demo-seed'`). `demo_payments.sql` marks most completed visits as paid. Neither script creates blockchain transactions, so nothing pretends to be anchored.
+
+Demo accounts are plain database rows. To let them sign in through the login form, create Supabase Auth users with the same emails (Authentication → Users → Add user); the login route links an Auth account to the existing user by email. Keep any shared demo password in a git-ignored file such as `*.local.md`.
+
+---
+
+## ✅ Checks and tests
 
 ```bash
-# 1. Smart Contract Unit Tests
-cd contracts
-npx hardhat test
-# Expected: 2 passing (anchors and verifies record, rejects duplicates)
-
-# 2. Backend TypeScript Compilation
-cd ../backend
-npm run build
-# Expected: Clean compilation via tsc
-
-# 3. Frontend Next.js Production Build
-cd ../frontend
-npm run build
-# Expected: Static page generation and route compilation without errors
-
-# 4. Standalone AI Python RAG Demonstration
-cd ../ai
-pip install -r requirements.txt
-export OPENAI_API_KEY=sk-...
-python rag_demo.py
+cd backend && npx tsc --noEmit      # backend typecheck
+cd frontend && npx tsc --noEmit     # frontend typecheck
+cd contracts && npm test            # contract tests
 ```
 
 ---
 
-## 🎯 Evaluation & Presentation Defense (FAQ)
+## 📍 Current status and limitations
 
-### Q: Why use Ethereum Wallet Auth instead of Supabase Auth?
-> **A:** Centralized authentication ties identity to an email provider, phone number, or company server. In HealthChain, the user's Ethereum address **is** their identity. Off-chain cryptographic signing (EIP-4361) proves ownership without passwords or central point of compromise.
-
-### Q: Why anchor only the SHA-256 hash instead of storing documents directly on Ethereum?
-> **A:** Storing raw Protected Health Information (PHI) on a public blockchain violates compliance mandates (e.g., HIPAA, GDPR's "Right to be Forgotten") and incurs high gas costs. Storing documents in private storage while anchoring the SHA-256 hash on-chain creates **zero-knowledge proof of existence**: document integrity is mathematically guaranteed without exposing private medical data.
-
-### Q: Why use `pgvector` instead of Pinecone or Milvus?
-> **A:** Utilizing PostgreSQL's native `pgvector` extension keeps all transactional data, audit logs, and vector representations in a single relational system. This enables atomic transactions, simplifies backups, reduces external infrastructure complexity, and eliminates data synchronization lag.
-
----
-
-## 🗺️ Roadmap & Production Considerations
-
-- [ ] **Background Processing Pipeline**: Decouple document anchoring and AI vectorization using an asynchronous task queue (BullMQ + Redis) to handle traffic spikes.
-- [ ] **Automated Server-Side OCR**: Integrate Tesseract or AWS Textract to automatically extract text from raw medical scans and PDFs during upload.
-- [ ] **Decentralized Storage Migration**: Introduce optional encrypted IPFS/Filecoin pinning alongside Supabase Storage.
-- [ ] **Zero-Knowledge Proofs (ZKP)**: Implement zk-SNARK verifications for selective disclosure (e.g., proving a patient is vaccinated or has a clean test result without revealing identity or history).
+| Area | Status |
+| :--- | :--- |
+| Email auth, booking, accept/decline, prescriptions, payments, notifications, admin user management | ✅ working |
+| AI summaries | ✅ with Ollama running; needs the report text pasted in (no OCR) |
+| View uploaded PDFs | ✅ via 60-second signed links |
+| Blockchain anchoring | ⏸️ off until the contract is deployed and `BLOCKCHAIN_ENABLED=true` |
+| Wallet (MetaMask) sign-in | API supported; not shown on the login page |
+| pgvector retrieval (RAG) | schema and `match_patient_analyses()` exist, but the current AI service doesn't store embeddings or retrieve history |
+| Payments | simulated only, no real gateway |
+| Doctor verification | not implemented: anyone can register as a doctor |
+| Doctor view of patient reports | no reports list on the doctor dashboard yet |
 
 ---
 
-## 📄 License
-This project is open-source under the [MIT License](LICENSE).
+## 🎯 FAQ
+
+**Why anchor only a hash instead of storing documents on Ethereum?**
+Health data on a public chain is a privacy and compliance problem (HIPAA, GDPR's right to erasure) and expensive in gas. Keeping files in private storage and anchoring only their SHA-256 hash gives tamper evidence without exposing anything.
+
+**Why enforce access in the database instead of only in the API?**
+RLS makes Postgres the final gatekeeper: even a buggy route can't return another patient's rows through the request-scoped client. Business rules such as refunds, auditing and role checks live in triggers, so they hold no matter which code path writes the data.
+
+**Why a local model instead of a hosted AI API?**
+Report text never leaves the machine running the backend, there are no API keys or costs for a demo, and the model's output is validated against a strict JSON shape before it's stored.
+
+**Why pgvector instead of a separate vector database?**
+It keeps embeddings next to the relational data in one system with one backup and transactional consistency. It's in the schema, ready for the retrieval step on the roadmap.
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Deploy `MedicalAudit.sol` and enable anchoring by default
+- [ ] Store embeddings and use `match_patient_analyses()` so summaries consider a patient's history
+- [ ] Server-side text extraction (OCR) from uploaded PDFs and scans
+- [ ] Doctor verification workflow for new doctor accounts
+- [ ] Reports view on the doctor dashboard
+- [ ] Real payment gateway (e.g. Razorpay test mode)
+- [ ] Background job queue for AI and anchoring instead of inline requests
