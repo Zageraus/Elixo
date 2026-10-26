@@ -68,7 +68,7 @@ export default function PatientDashboard() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<{
-    type: "success" | "error";
+    type: "success" | "warning" | "error";
     text: string;
   } | null>(null);
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -201,13 +201,32 @@ export default function PatientDashboard() {
     const formEl = e.currentTarget;
     const form = new FormData(formEl);
     try {
-      await api.uploadReport(form);
+      const result = await api.uploadReport(form);
       const updatedReports = await api.getReports();
       setReports(updatedReports);
-      setUploadMessage({
-        type: "success",
-        text: "Report uploaded, analyzed by AI, and anchored on Sepolia. You can view the AI summary below.",
-      });
+
+      // Describe each step as it actually went: the file is saved either
+      // way, but AI and anchoring can be skipped, off, or fail on their own.
+      const parts = ["Report uploaded."];
+      let hadProblem = false;
+      if (result.ai_analysis) {
+        parts.push("AI summary added below.");
+      } else if (result.ai_error) {
+        parts.push(`AI summary failed: ${result.ai_error}`);
+        hadProblem = true;
+      } else {
+        parts.push("No report text was given, so there's no AI summary.");
+      }
+      if (result.blockchain && "txHash" in result.blockchain) {
+        parts.push(`Anchored on Sepolia (tx ${result.blockchain.txHash.slice(0, 10)}…).`);
+      } else if (result.blockchain_error) {
+        parts.push(`Blockchain anchoring failed: ${result.blockchain_error}`);
+        hadProblem = true;
+      } else {
+        parts.push("Blockchain anchoring is turned off, so it wasn't anchored.");
+      }
+
+      setUploadMessage({ type: hadProblem ? "warning" : "success", text: parts.join(" ") });
       formEl.reset();
     } catch (err: any) {
       console.error(err);
@@ -868,6 +887,8 @@ export default function PatientDashboard() {
               className={`p-3.5 rounded-xl text-xs font-medium border flex items-start gap-2.5 ${
                 uploadMessage.type === "success"
                   ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : uploadMessage.type === "warning"
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
                   : "bg-red-500/10 border-red-500/30 text-red-400"
               }`}
             >

@@ -98,6 +98,15 @@ export interface AppNotification {
   created_at: string;
 }
 
+/** POST /api/reports: each step reports its own outcome. */
+export interface ReportUploadResult {
+  report: { id: string; title: string };
+  blockchain?: { status: "disabled" } | { txHash: string; blockNumber: number };
+  blockchain_error?: string;
+  ai_analysis?: { summary: string };
+  ai_error?: string;
+}
+
 export interface DoctorOption {
   id: string;
   full_name: string;
@@ -147,7 +156,8 @@ export const api = {
       body: JSON.stringify({ appointment_id, method }),
     }),
   getReports: () => request<any[]>("/api/reports"),
-  uploadReport: (form: FormData) => request("/api/reports", { method: "POST", body: form }),
+  uploadReport: (form: FormData) =>
+    request<ReportUploadResult>("/api/reports", { method: "POST", body: form }),
   getPrescriptions: () => request<any[]>("/api/prescriptions"),
   createPrescription: (body: CreatePrescriptionInput) =>
     request<any>("/api/prescriptions", {
