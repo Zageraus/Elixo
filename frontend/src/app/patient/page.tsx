@@ -78,6 +78,8 @@ export default function PatientDashboard() {
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PaymentSummary | null>(null);
+  const [openingFileId, setOpeningFileId] = useState<string | null>(null);
+  const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
   const [doctorsLoading, setDoctorsLoading] = useState(true);
   const [doctorsFailed, setDoctorsFailed] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -191,6 +193,31 @@ export default function PatientDashboard() {
       setPayError(err?.message ?? "Payment failed. Please try again.");
     } finally {
       setPaying(false);
+    }
+  };
+
+  const openReportFile = async (reportId: string) => {
+    // Open the tab during the click so popup blockers allow it, then point
+    // it at the signed link once the backend returns one.
+    const tab = window.open("", "_blank");
+    setOpeningFileId(reportId);
+    setFileErrors((prev) => {
+      const { [reportId]: _, ...rest } = prev;
+      return rest;
+    });
+    try {
+      const { url } = await api.getReportFileUrl(reportId);
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = url;
+      } else {
+        window.location.href = url;
+      }
+    } catch (err: any) {
+      tab?.close();
+      setFileErrors((prev) => ({ ...prev, [reportId]: err?.message ?? "Could not open the file." }));
+    } finally {
+      setOpeningFileId(null);
     }
   };
 
@@ -770,12 +797,30 @@ export default function PatientDashboard() {
                         ? { label: "Anchoring failed", cls: "bg-red-500/10 text-red-400 border-red-500/30" }
                         : { label: "Not anchored", cls: "bg-zinc-800 text-zinc-400 border-zinc-700" };
                     return (
-                      <span className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-semibold border ${badge.cls}`}>
-                        {badge.label}
-                      </span>
+                      <div className="flex-shrink-0 flex items-center gap-2">
+                        {r.has_file && (
+                          <button
+                            type="button"
+                            onClick={() => openReportFile(r.report_id)}
+                            disabled={openingFileId === r.report_id}
+                            className="text-xs px-3 py-1 rounded-full font-semibold border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 transition disabled:opacity-50"
+                          >
+                            {openingFileId === r.report_id ? "Opening…" : "View PDF ↗"}
+                          </button>
+                        )}
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </div>
                     );
                   })()}
                 </div>
+
+                {fileErrors[r.report_id] && (
+                  <p role="alert" className="text-[11px] text-red-400">
+                    {fileErrors[r.report_id]}
+                  </p>
+                )}
 
                 {!r.summary && (
                   <p className="text-[11px] text-zinc-500">

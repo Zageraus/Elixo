@@ -158,6 +158,8 @@ export const api = {
   getReports: () => request<any[]>("/api/reports"),
   uploadReport: (form: FormData) =>
     request<ReportUploadResult>("/api/reports", { method: "POST", body: form }),
+  getReportFileUrl: (reportId: string) =>
+    request<{ url: string; expires_in: number }>(`/api/reports/${reportId}/file`),
   getPrescriptions: () => request<any[]>("/api/prescriptions"),
   createPrescription: (body: CreatePrescriptionInput) =>
     request<any>("/api/prescriptions", {
