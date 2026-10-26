@@ -743,7 +743,7 @@ export default function PatientDashboard() {
             <EmptyState
               icon="📑"
               title="No reports uploaded yet"
-              subtitle="Use the form below to upload a document — it will be automatically analyzed by AI and anchored on Sepolia."
+              subtitle="Use the form below to upload a document. Include its text to get an AI summary."
             />
           ) : (
             reports.map((r) => (
@@ -758,16 +758,30 @@ export default function PatientDashboard() {
                       {r.report_type?.replace(/_/g, " ")}
                     </span>
                   </div>
-                  <span
-                    className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full capitalize font-semibold border ${
+                  {(() => {
+                    // blockchain_status is null when no anchoring was attempted
+                    // (e.g. BLOCKCHAIN_ENABLED is off), which is not "pending".
+                    const badge =
                       r.blockchain_status === "confirmed"
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                    }`}
-                  >
-                    {r.blockchain_status ?? "pending"}
-                  </span>
+                        ? { label: "Anchored", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" }
+                        : r.blockchain_status === "pending"
+                        ? { label: "Anchoring…", cls: "bg-amber-500/10 text-amber-400 border-amber-500/30" }
+                        : r.blockchain_status === "failed"
+                        ? { label: "Anchoring failed", cls: "bg-red-500/10 text-red-400 border-red-500/30" }
+                        : { label: "Not anchored", cls: "bg-zinc-800 text-zinc-400 border-zinc-700" };
+                    return (
+                      <span className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-semibold border ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    );
+                  })()}
                 </div>
+
+                {!r.summary && (
+                  <p className="text-[11px] text-zinc-500">
+                    No AI summary: this report was uploaded without its text.
+                  </p>
+                )}
 
                 {r.summary && (
                   <div className="bg-purple-950/20 border border-purple-500/25 rounded-xl p-3.5 space-y-1.5">
