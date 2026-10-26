@@ -706,11 +706,7 @@ insert into prescriptions (appointment_id, patient_id, doctor_id, medications, n
      '[{"name": "Atorvastatin", "dosage": "10mg", "frequency": "once daily", "duration_days": 90}]',
      'Recheck lipid panel in 3 months; low-cholesterol diet advised.');
 
-insert into blockchain_transactions (report_id, chain, tx_hash, block_number, data_hash, status, confirmed_at) values
-    ('66666666-6666-6666-6666-666666666666', 'sepolia',
-     '0xabc123def4560000000000000000000000000000000000000000000000000001',
-     5123456, '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-     'confirmed', now());
+-- (No blockchain_transactions are seeded: real anchors come from the backend.)
 
 
 -- Trigger functions run as their owner so RLS doesn't block the audit,
@@ -863,6 +859,52 @@ alter table blockchain_transactions
     drop constraint blockchain_transactions_prescription_id_fkey,
     add constraint blockchain_transactions_prescription_id_fkey
         foreign key (prescription_id) references prescriptions(id) on delete cascade;
+
+-- =====================================================================
+-- HealthChain: Report view shows the latest anchor and its chain
+-- (Migration 011)
+--
+-- * v_report_with_analysis joined every blockchain_transactions row, so a
+--   report with a failed attempt and a later success appeared twice. It now
+--   takes the latest attempt per report, and exposes which chain it is on
+--   (e.g. 'sepolia' or 'hardhat-local') so the UI can link correctly.
+-- * Removes the placeholder "confirmed" transaction from the original seed
+--   data: its hash was made up, so it pointed nowhere on any chain.
+-- =====================================================================
+
+create or replace view v_report_with_analysis as
+select
+    mr.id               as report_id,
+    mr.patient_id,
+    mr.doctor_id,
+    mr.title,
+    mr.report_type,
+    mr.file_hash,
+    mr.created_at       as report_created_at,
+    ai.summary,
+    ai.findings,
+    ai.confidence,
+    ai.model_used,
+    btx.tx_hash,
+    btx.status           as blockchain_status,
+    btx.block_number,
+    btx.chain
+from medical_reports mr
+left join lateral (
+    select * from ai_analyses a
+    where a.report_id = mr.id
+    order by a.created_at desc
+    limit 1
+) ai on true
+left join lateral (
+    select * from blockchain_transactions t
+    where t.report_id = mr.id
+    order by t.created_at desc
+    limit 1
+) btx on true;
+
+delete from blockchain_transactions
+where tx_hash = '0xabc123def4560000000000000000000000000000000000000000000000000001';
 
 -- Force reload schema cache for PostgREST
 NOTIFY pgrst, 'reload schema';

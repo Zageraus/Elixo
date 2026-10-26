@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "anchor:backfill": "tsx src/scripts/anchor-backfill.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { supabaseAdmin, supabaseForRequest } from "../config/supabase.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { sha256Hex, anchorHashOnChain } from "../services/blockchain.service.js";
+import { hashPrescription, anchorHashOnChain, checkOnChain } from "../services/blockchain.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -13,7 +13,7 @@ router.get("/", async (req, res) => {
 
   const { data, error } = await db
     .from("prescriptions")
-    .select("*, blockchain_transactions(tx_hash, status, block_number)")
+    .select("*, blockchain_transactions(tx_hash, status, block_number, chain)")
     .order("issued_at", { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -35,6 +35,37 @@ router.get("/", async (req, res) => {
       doctor_name: names.get(p.doctor_id) ?? null,
     }))
   );
+});
+
+/**
+ * GET /api/prescriptions/:id/verify
+ * Re-hashes the medications as stored now and compares them with the hash
+ * recorded when anchoring and with the hash held on-chain.
+ */
+router.get("/:id/verify", async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Invalid prescription ID." });
+
+  // RLS-scoped: only the patient, prescribing doctor or an admin gets a row.
+  const db = supabaseForRequest(req.rawJwt!);
+  const { data: rx, error } = await db
+    .from("prescriptions")
+    .select("id, medications, blockchain_transactions(data_hash, status)")
+    .eq("id", id.data)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!rx) return res.status(404).json({ error: "Not found or not authorized" });
+
+  const computedHash = hashPrescription(rx.medications);
+  const confirmed = (rx.blockchain_transactions as { data_hash: string; status: string }[]).find(
+    (t) => t.status === "confirmed"
+  );
+
+  res.json({
+    recorded_hash: confirmed?.data_hash ?? null,
+    computed_hash: computedHash,
+    chain: await checkOnChain(rx.id, computedHash),
+  });
 });
 
 const medicationSchema = z.object({
@@ -82,9 +113,7 @@ router.post("/", requireRole("doctor", "admin"), async (req, res) => {
   };
 
   if (process.env.BLOCKCHAIN_ENABLED === "true") {
-    const contentHash = sha256Hex(
-      Buffer.from(JSON.stringify(parsed.data.medications))
-    );
+    const contentHash = hashPrescription(parsed.data.medications);
 
     try {
       blockchain = await anchorHashOnChain({

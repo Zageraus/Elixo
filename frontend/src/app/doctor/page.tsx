@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { api, getUser, MedicationItem } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
 import { formatINR, PaymentSummary } from "../../lib/payments";
+import VerifyIntegrity from "../../components/VerifyIntegrity";
+import { chainLabel, explorerTxUrl, shortHash } from "../../lib/chain";
 
 interface AppointmentItem {
   appointment_id: string;
@@ -28,6 +30,7 @@ interface PrescriptionRecord {
   patient_name?: string | null;
   blockchain_transactions?: {
     tx_hash: string;
+    chain?: string;
     status: string;
     block_number?: number;
   }[];
@@ -645,7 +648,11 @@ export default function DoctorDashboard() {
             <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs space-y-3">
               <div className="flex items-center gap-2 font-bold text-emerald-400">
                 <span>✅</span>
-                <span>Prescription issued and anchored on-chain</span>
+                <span>
+                  {submitSuccess.blockchain?.txHash
+                    ? `Prescription issued and anchored on ${chainLabel(submitSuccess.blockchain.chain)}`
+                    : "Prescription issued"}
+                </span>
               </div>
               <p className="text-emerald-300/80">
                 ID:{" "}
@@ -653,19 +660,27 @@ export default function DoctorDashboard() {
                   {submitSuccess.prescription?.id}
                 </span>
               </p>
-              {submitSuccess.blockchain?.tx_hash && (
+              {submitSuccess.blockchain?.status === "disabled" && (
+                <p className="text-zinc-400">Blockchain anchoring is turned off, so it wasn&apos;t anchored.</p>
+              )}
+              {submitSuccess.blockchain?.error && (
+                <p className="text-amber-400">Blockchain anchoring failed: {submitSuccess.blockchain.error}</p>
+              )}
+              {submitSuccess.blockchain?.txHash && (
                 <div className="bg-zinc-900/80 p-2.5 rounded-xl border border-emerald-500/30 flex items-center justify-between gap-3">
                   <span className="font-mono text-[11px] text-zinc-400 truncate">
-                    tx: {submitSuccess.blockchain.tx_hash}
+                    tx: {submitSuccess.blockchain.txHash}
                   </span>
-                  <a
-                    href={`https://sepolia.etherscan.io/tx/${submitSuccess.blockchain.tx_hash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-400 hover:underline flex-shrink-0 text-[11px] font-medium"
-                  >
-                    Etherscan ↗
-                  </a>
+                  {explorerTxUrl(submitSuccess.blockchain.chain, submitSuccess.blockchain.txHash) && (
+                    <a
+                      href={explorerTxUrl(submitSuccess.blockchain.chain, submitSuccess.blockchain.txHash)!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-400 hover:underline flex-shrink-0 text-[11px] font-medium"
+                    >
+                      Etherscan ↗
+                    </a>
+                  )}
                 </div>
               )}
             </div>
@@ -713,14 +728,16 @@ export default function DoctorDashboard() {
               <EmptyState
                 icon="📋"
                 title="No prescriptions issued yet"
-                subtitle="Use the form above to issue your first prescription — it will be anchored on Sepolia and listed here."
+                subtitle="Use the form above to issue your first prescription. It will be listed here, and anchored on-chain when anchoring is turned on."
               />
             </div>
           ) : (
             prescriptions.map((p) => {
-              const txHash = p.blockchain_transactions?.find(
+              const tx = p.blockchain_transactions?.find(
                 (t) => t.status === "confirmed"
-              )?.tx_hash;
+              );
+              const txHash = tx?.tx_hash;
+              const txUrl = txHash ? explorerTxUrl(tx?.chain, txHash) : null;
               return (
                 <div
                   key={p.id}
@@ -783,7 +800,7 @@ export default function DoctorDashboard() {
                     {txHash ? (
                       <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Blockchain Anchored
+                        Anchored on {chainLabel(tx?.chain)}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1.5 text-zinc-500 font-medium">
@@ -791,17 +808,21 @@ export default function DoctorDashboard() {
                         Not anchored on-chain
                       </span>
                     )}
-                    {txHash && (
-                      <a
-                        href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-mono text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
-                      >
-                        tx: {txHash.slice(0, 10)}…{txHash.slice(-6)} ↗
-                      </a>
-                    )}
+                    {txHash &&
+                      (txUrl ? (
+                        <a
+                          href={txUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
+                        >
+                          tx: {shortHash(txHash)} ↗
+                        </a>
+                      ) : (
+                        <span className="font-mono text-zinc-400">tx: {shortHash(txHash)}</span>
+                      ))}
                   </div>
+                  {txHash && <VerifyIntegrity kind="prescription" id={p.id} />}
                 </div>
               );
             })

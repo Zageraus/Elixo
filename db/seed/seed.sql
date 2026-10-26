@@ -39,8 +39,4 @@ insert into prescriptions (appointment_id, patient_id, doctor_id, medications, n
      '[{"name": "Atorvastatin", "dosage": "10mg", "frequency": "once daily", "duration_days": 90}]',
      'Recheck lipid panel in 3 months; low-cholesterol diet advised.');
 
-insert into blockchain_transactions (report_id, chain, tx_hash, block_number, data_hash, status, confirmed_at) values
-    ('66666666-6666-6666-6666-666666666666', 'sepolia',
-     '0xabc123def4560000000000000000000000000000000000000000000000000001',
-     5123456, '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-     'confirmed', now());
+-- (No blockchain_transactions are seeded: real anchors come from the backend.)

@@ -10,6 +10,8 @@ import {
   PaymentSummary,
 } from "../../lib/payments";
 import DashboardHeader from "../../components/DashboardHeader";
+import VerifyIntegrity from "../../components/VerifyIntegrity";
+import { chainLabel, explorerTxUrl, shortHash } from "../../lib/chain";
 
 interface PrescriptionRecord {
   id: string;
@@ -22,6 +24,7 @@ interface PrescriptionRecord {
   doctor_name?: string | null;
   blockchain_transactions?: {
     tx_hash: string;
+    chain?: string;
     status: string;
     block_number?: number;
   }[];
@@ -245,7 +248,9 @@ export default function PatientDashboard() {
         parts.push("No report text was given, so there's no AI summary.");
       }
       if (result.blockchain && "txHash" in result.blockchain) {
-        parts.push(`Anchored on Sepolia (tx ${result.blockchain.txHash.slice(0, 10)}…).`);
+        parts.push(
+          `Anchored on ${chainLabel(result.blockchain.chain)} (tx ${shortHash(result.blockchain.txHash)}).`
+        );
       } else if (result.blockchain_error) {
         parts.push(`Blockchain anchoring failed: ${result.blockchain_error}`);
         hadProblem = true;
@@ -640,9 +645,11 @@ export default function PatientDashboard() {
             </div>
           ) : (
             prescriptions.map((p) => {
-              const txHash = p.blockchain_transactions?.find(
+              const tx = p.blockchain_transactions?.find(
                 (t) => t.status === "confirmed"
-              )?.tx_hash;
+              );
+              const txHash = tx?.tx_hash;
+              const txUrl = txHash ? explorerTxUrl(tx?.chain, txHash) : null;
               return (
                 <div
                   key={p.id}
@@ -715,7 +722,7 @@ export default function PatientDashboard() {
                     {txHash ? (
                       <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Anchored on Sepolia
+                        Anchored on {chainLabel(tx?.chain)}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1.5 text-zinc-500 font-medium">
@@ -723,17 +730,21 @@ export default function PatientDashboard() {
                         Not anchored on-chain
                       </span>
                     )}
-                    {txHash && (
-                      <a
-                        href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-mono text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
-                      >
-                        tx: {txHash.slice(0, 10)}…{txHash.slice(-6)} ↗
-                      </a>
-                    )}
+                    {txHash &&
+                      (txUrl ? (
+                        <a
+                          href={txUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
+                        >
+                          tx: {shortHash(txHash)} ↗
+                        </a>
+                      ) : (
+                        <span className="font-mono text-zinc-400">tx: {shortHash(txHash)}</span>
+                      ))}
                   </div>
+                  {txHash && <VerifyIntegrity kind="prescription" id={p.id} />}
                 </div>
               );
             })
@@ -840,23 +851,33 @@ export default function PatientDashboard() {
                   </div>
                 )}
 
-                {r.tx_hash && (
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
+                {r.tx_hash && r.blockchain_status === "confirmed" && (
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1 flex-wrap gap-2">
                     <span className="font-mono">
                       Hash:{" "}
                       <span className="text-zinc-400">
                         {r.file_hash?.slice(0, 16)}…
                       </span>
                     </span>
-                    <a
-                      href={`https://sepolia.etherscan.io/tx/${r.tx_hash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-mono text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
-                    >
-                      View on Etherscan ↗
-                    </a>
+                    {explorerTxUrl(r.chain, r.tx_hash) ? (
+                      <a
+                        href={explorerTxUrl(r.chain, r.tx_hash)!}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
+                      >
+                        View on Etherscan ↗
+                      </a>
+                    ) : (
+                      <span className="font-mono text-zinc-400">
+                        {chainLabel(r.chain)} · tx {shortHash(r.tx_hash)}
+                      </span>
+                    )}
                   </div>
+                )}
+
+                {r.blockchain_status === "confirmed" && (
+                  <VerifyIntegrity kind="report" id={r.report_id} />
                 )}
               </div>
             ))

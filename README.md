@@ -101,8 +101,10 @@ flowchart TD
 
 > The AI never sees the PDF itself, only the text the patient provides. No real patient data is needed to demo it.
 
-### 4. Tamper-evident anchoring on Ethereum (optional)
-When `BLOCKCHAIN_ENABLED=true`, the SHA-256 hash of each report (and of each prescription's medications) is written to `MedicalAudit.anchorRecord()` on Sepolia, and the transaction is tracked in `blockchain_transactions`. Anyone can later recompute a document's hash and call `verifyRecord()` to prove it hasn't changed. Documents never go on-chain. With anchoring off, cards honestly show **Not anchored**.
+### 4. Tamper-evident anchoring on Ethereum
+When `BLOCKCHAIN_ENABLED=true`, the SHA-256 hash of each report file (and of each prescription's medications, serialised in a fixed order) is written to `MedicalAudit.anchorRecord()`, and the transaction is tracked in `blockchain_transactions` along with the chain it's on (`hardhat-local` or `sepolia`). Documents never go on-chain. With anchoring off, cards honestly show **Not anchored**.
+
+**🔍 Verify integrity** (on anchored reports and prescriptions) re-hashes the record on the server, from the stored file or the current medications, and compares it with the hash recorded at upload and the hash held by the contract. It reports **Verified**, **Tampering detected** (file swapped or medications edited after anchoring) or why it couldn't check (anchoring off, chain not running).
 
 ### 5. Admin user management
 - **Deactivate** blocks sign-in, hides a doctor from booking, cancels the user's upcoming visits (refunding paid ones) and keeps every record. **Reactivate** restores access.
@@ -164,6 +166,7 @@ Every table has RLS enabled. Patients see only their own rows, doctors see rows 
 | `008_payments` | payments table, refund trigger, payment metrics in admin analytics |
 | `009_appointment_notifications` | IST times; no duplicate notices when a doctor is deactivated |
 | `010_blockchain_tx_cascade` | chain transactions are removed with their document (fixes deleting anchored records) |
+| `011_report_chain_view` | report view uses the latest anchor attempt and exposes its chain; removes the placeholder seed transaction |
 
 ---
 
@@ -215,12 +218,14 @@ All routes except `/health` and `/api/auth/*` need `Authorization: Bearer <token
 | `GET` | `/` | reports visible to the user, with AI summary, chain status and `has_file` |
 | `GET` | `/:id` | one report |
 | `GET` | `/:id/file` | 60-second signed link to the stored file |
+| `GET` | `/:id/verify` | integrity check: stored file vs upload hash vs on-chain hash |
 
 ### Prescriptions — `/api/prescriptions`
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `GET` | `/` | prescriptions visible to the user, with patient/doctor names and chain transactions |
 | `POST` | `/` | issue a prescription (doctors, admins) |
+| `GET` | `/:id/verify` | integrity check: current medications vs on-chain hash |
 
 ### Notifications — `/api/notifications`
 | Method | Path | Description |
@@ -247,7 +252,8 @@ All routes except `/health` and `/api/auth/*` need `Authorization: Bearer <token
 │       ├── config/       Supabase clients (service role + per-request RLS client)
 │       ├── middleware/   JWT issue/verify, active-account check, role guards
 │       ├── routes/       auth, appointments, payments, reports, prescriptions, notifications, admin
-│       └── services/     ai (Ollama), blockchain (ethers), payments
+│       ├── services/     ai (Ollama), blockchain (ethers), payments
+│       └── scripts/      anchor-backfill (anchors existing records)
 ├── frontend/             Next.js 14 app
 │   └── src/
 │       ├── app/          / (login + landing), /patient, /doctor, /admin
@@ -257,7 +263,7 @@ All routes except `/health` and `/api/auth/*` need `Authorization: Bearer <token
 │   ├── migrations/       001–010
 │   ├── seed/             seed.sql, demo_seed.sql, demo_payments.sql
 │   └── ALL_IN_ONE_SETUP.sql
-├── contracts/            Hardhat project with MedicalAudit.sol, deploy script and tests
+├── contracts/            Hardhat project: MedicalAudit.sol, tests, Sepolia deploy and local-chain setup scripts
 ├── ai/                   standalone Python RAG demo (OpenAI-based, for presentations)
 └── docs/                 presentation notes
 ```
@@ -303,13 +309,24 @@ npm install
 npm run dev              # http://localhost:3000
 ```
 
-### 5. Smart contract (optional)
+### 5. Blockchain anchoring (optional)
+
+**Local Hardhat chain** (no accounts or test ETH needed):
 ```bash
 cd contracts
 npm install
-npm test
-npm run deploy:sepolia   # then set AUDIT_CONTRACT_ADDRESS and BLOCKCHAIN_ENABLED=true in backend/.env
+npm test                  # 6 contract tests
+npm run node              # keep running: local chain on http://127.0.0.1:8545
+npm run setup:local       # in another terminal: deploys, authorises the backend signer, writes AUDIT_CONTRACT_ADDRESS to backend/.env
 ```
+Then in `backend/.env` set `SEPOLIA_RPC_URL=http://127.0.0.1:8545`, a Hardhat test account key as `AUDIT_SIGNER_PRIVATE_KEY` and `BLOCKCHAIN_ENABLED=true`, restart the backend, and anchor existing records with:
+```bash
+cd backend
+npm run anchor:backfill
+```
+A local chain starts empty each time `npm run node` restarts: run `setup:local`, restart the backend and run `anchor:backfill` again.
+
+**Sepolia:** set a real RPC URL and a funded test-wallet key in `contracts/.env` and `backend/.env`, run `npm run deploy:sepolia`, put the printed address in `AUDIT_CONTRACT_ADDRESS`, and set `BLOCKCHAIN_ENABLED=true`. Transactions then link to Sepolia Etherscan.
 
 ---
 
@@ -327,8 +344,8 @@ npm run deploy:sepolia   # then set AUDIT_CONTRACT_ADDRESS and BLOCKCHAIN_ENABLE
 | `FRONTEND_ORIGIN` | ✅ | CORS origin, e.g. `http://localhost:3000` |
 | `OLLAMA_URL` | | default `http://127.0.0.1:11434` |
 | `LOCAL_CHAT_MODEL` | | default `qwen2.5:1.5b-instruct` |
-| `BLOCKCHAIN_ENABLED` | | `true` to anchor hashes on Sepolia |
-| `SEPOLIA_RPC_URL`, `AUDIT_CONTRACT_ADDRESS`, `AUDIT_SIGNER_PRIVATE_KEY` | when anchoring | RPC endpoint, deployed contract, authorised signer |
+| `BLOCKCHAIN_ENABLED` | | `true` to anchor hashes on-chain |
+| `SEPOLIA_RPC_URL`, `AUDIT_CONTRACT_ADDRESS`, `AUDIT_SIGNER_PRIVATE_KEY` | when anchoring | RPC endpoint (Sepolia, or `http://127.0.0.1:8545` for the local chain), deployed contract, authorised signer |
 | `ADMIN_REGISTRATION_KEY` | | passcode that lets a wallet sign-in become admin |
 
 ### `frontend/.env.local`
@@ -342,7 +359,7 @@ Never commit real `.env` files; `.gitignore` excludes them.
 
 ## 🧪 Demo data
 
-`demo_seed.sql` adds 8 doctors across specializations (Dermatology, Orthopedics, Pediatrics, Neurology, Gynecology & Obstetrics, Endocrinology, Psychiatry, Pulmonology), 6 patients with profiles, ~20 appointments between late September and mid November 2026, prescriptions, and lab/imaging reports with hand-written AI summaries (tagged `model_used = 'demo-seed'`). `demo_payments.sql` marks most completed visits as paid. Neither script creates blockchain transactions, so nothing pretends to be anchored.
+`demo_seed.sql` adds 8 doctors across specializations (Dermatology, Orthopedics, Pediatrics, Neurology, Gynecology & Obstetrics, Endocrinology, Psychiatry, Pulmonology), 6 patients with profiles, ~20 appointments between late September and mid November 2026, prescriptions, and lab/imaging reports with hand-written AI summaries (tagged `model_used = 'demo-seed'`). `demo_payments.sql` marks most completed visits as paid. Neither script creates blockchain transactions, so nothing pretends to be anchored; run `npm run anchor:backfill` to anchor them for real.
 
 Demo accounts are plain database rows. To let them sign in through the login form, create Supabase Auth users with the same emails (Authentication → Users → Add user); the login route links an Auth account to the existing user by email. Keep any shared demo password in a git-ignored file such as `*.local.md`.
 
@@ -365,7 +382,7 @@ cd contracts && npm test            # contract tests
 | Email auth, booking, accept/decline, prescriptions, payments, notifications, admin user management | ✅ working |
 | AI summaries | ✅ with Ollama running; needs the report text pasted in (no OCR) |
 | View uploaded PDFs | ✅ via 60-second signed links |
-| Blockchain anchoring | ⏸️ off until the contract is deployed and `BLOCKCHAIN_ENABLED=true` |
+| Blockchain anchoring and integrity checks | ✅ on a local Hardhat chain (`npm run node` must be running); Sepolia supported but not deployed |
 | Wallet (MetaMask) sign-in | API supported; not shown on the login page |
 | pgvector retrieval (RAG) | schema and `match_patient_analyses()` exist, but the current AI service doesn't store embeddings or retrieve history |
 | Payments | simulated only, no real gateway |
@@ -392,7 +409,7 @@ It keeps embeddings next to the relational data in one system with one backup an
 
 ## 🗺️ Roadmap
 
-- [ ] Deploy `MedicalAudit.sol` and enable anchoring by default
+- [ ] Deploy `MedicalAudit.sol` to Sepolia for permanent, publicly checkable anchors
 - [ ] Store embeddings and use `match_patient_analyses()` so summaries consider a patient's history
 - [ ] Server-side text extraction (OCR) from uploaded PDFs and scans
 - [ ] Doctor verification workflow for new doctor accounts

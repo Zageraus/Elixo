@@ -98,10 +98,23 @@ export interface AppNotification {
   created_at: string;
 }
 
+export type ChainCheck =
+  | { status: "verified" | "mismatch"; anchoredAt: string }
+  | { status: "not_anchored" | "disabled" }
+  | { status: "unavailable"; error: string };
+
+export interface IntegrityResult {
+  recorded_hash: string | null;
+  computed_hash: string | null;
+  /** Reports only: does the stored file still match the hash recorded at upload? */
+  file?: "match" | "changed" | "missing";
+  chain: ChainCheck;
+}
+
 /** POST /api/reports: each step reports its own outcome. */
 export interface ReportUploadResult {
   report: { id: string; title: string };
-  blockchain?: { status: "disabled" } | { txHash: string; blockNumber: number };
+  blockchain?: { status: "disabled" } | { txHash: string; blockNumber: number; chain: string };
   blockchain_error?: string;
   ai_analysis?: { summary: string };
   ai_error?: string;
@@ -158,6 +171,9 @@ export const api = {
   getReports: () => request<any[]>("/api/reports"),
   uploadReport: (form: FormData) =>
     request<ReportUploadResult>("/api/reports", { method: "POST", body: form }),
+  verifyReport: (reportId: string) => request<IntegrityResult>(`/api/reports/${reportId}/verify`),
+  verifyPrescription: (prescriptionId: string) =>
+    request<IntegrityResult>(`/api/prescriptions/${prescriptionId}/verify`),
   getReportFileUrl: (reportId: string) =>
     request<{ url: string; expires_in: number }>(`/api/reports/${reportId}/file`),
   getPrescriptions: () => request<any[]>("/api/prescriptions"),

@@ -1,4 +1,3 @@
-
 import { Contract, JsonRpcProvider, Wallet, id } from "ethers";
 import { createHash } from "crypto";
 import { supabaseAdmin } from "../config/supabase.js";
@@ -6,8 +5,15 @@ import { supabaseAdmin } from "../config/supabase.js";
 const ABI = [
   "function anchorRecord(bytes32 recordId, bytes32 dataHash, string recordType) external",
   "function verifyRecord(bytes32 recordId, bytes32 dataHash) external view returns (bool)",
+  "function getRecord(bytes32 recordId) external view returns (tuple(bytes32 dataHash, address submittedBy, uint256 timestamp, string recordType))",
   "event RecordAnchored(bytes32 indexed recordId, bytes32 dataHash, string recordType, uint256 timestamp)",
 ];
+
+/** Stored in blockchain_transactions.chain; the frontend maps it to an explorer. */
+const CHAIN_NAMES: Record<string, string> = {
+  "31337": "hardhat-local",
+  "11155111": "sepolia",
+};
 
 function getContract() {
   const rpcUrl = process.env.SEPOLIA_RPC_URL;
@@ -29,7 +35,29 @@ function getContract() {
   const provider = new JsonRpcProvider(rpcUrl);
   const signer = new Wallet(privateKey, provider);
 
-  return new Contract(contractAddress, ABI, signer);
+  return { provider, contractAddress, contract: new Contract(contractAddress, ABI, signer) };
+}
+
+/**
+ * Connects to the chain and checks the contract is deployed there. A local
+ * Hardhat chain starts empty after every restart, so a stale address is a
+ * common, explainable failure.
+ */
+async function connect() {
+  const { provider, contractAddress, contract } = getContract();
+  let chainId: bigint;
+  try {
+    chainId = (await provider.getNetwork()).chainId;
+  } catch {
+    throw new Error("Can't reach the blockchain node. Is the chain running?");
+  }
+  if ((await provider.getCode(contractAddress)) === "0x") {
+    throw new Error(
+      "The audit contract isn't deployed on the current chain. If you restarted the local chain, run `npm --prefix contracts run setup:local` and restart the backend."
+    );
+  }
+  const chain = CHAIN_NAMES[chainId.toString()] ?? `chain-${chainId}`;
+  return { contract, chain };
 }
 
 /**
@@ -41,10 +69,22 @@ export function sha256Hex(buffer: Buffer): string {
 }
 
 /**
- * Anchor a medical report or prescription hash on Sepolia.
+ * Hash of a prescription's medications with a fixed key order, so the same
+ * prescription always hashes the same way when it's anchored and when it's
+ * verified later from the database (jsonb doesn't keep key order).
+ */
+export function hashPrescription(
+  medications: { name: string; dosage: string; frequency: string; duration_days: number }[]
+): string {
+  const canonical = medications.map((m) => [m.name, m.dosage, m.frequency, m.duration_days]);
+  return sha256Hex(Buffer.from(JSON.stringify(canonical)));
+}
+
+/**
+ * Anchor a medical report or prescription hash on-chain.
  *
- * The document itself is not stored on-chain.
- * Existing blockchain_transactions database operations are preserved.
+ * The document itself is not stored on-chain. Earlier unconfirmed attempts
+ * for the same record are replaced, so retries don't pile up.
  */
 export async function anchorHashOnChain(params: {
   recordId: string;
@@ -58,14 +98,22 @@ export async function anchorHashOnChain(params: {
     throw new Error("Invalid file hash: expected a 64-character SHA-256 hex digest");
   }
 
+  const { contract, chain } = await connect();
+
   const targetColumn =
     recordType === "report" ? "report_id" : "prescription_id";
+
+  await supabaseAdmin
+    .from("blockchain_transactions")
+    .delete()
+    .eq(targetColumn, recordId)
+    .neq("status", "confirmed");
 
   const { data: txRow, error: insertErr } = await supabaseAdmin
     .from("blockchain_transactions")
     .insert({
       [targetColumn]: recordId,
-      chain: "sepolia",
+      chain,
       tx_hash: `pending-${recordId}-${Date.now()}`,
       data_hash: fileHashHex,
       status: "pending",
@@ -78,8 +126,6 @@ export async function anchorHashOnChain(params: {
   }
 
   try {
-    const contract = getContract();
-
     // Convert the UUID string to a deterministic bytes32 identifier.
     const recordIdBytes32 = id(recordId);
     const dataHashBytes32 = `0x${fileHashHex}`;
@@ -114,6 +160,7 @@ export async function anchorHashOnChain(params: {
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+      chain,
     };
   } catch (err) {
     // Preserve the existing failed-transaction status update.
@@ -126,20 +173,40 @@ export async function anchorHashOnChain(params: {
   }
 }
 
+export type OnChainCheck =
+  | { status: "verified"; anchoredAt: string }
+  | { status: "mismatch"; anchoredAt: string }
+  | { status: "not_anchored" };
+
 /**
- * Verify that a file's SHA-256 hash matches its on-chain record.
+ * Compare a hash with what the contract holds for this record:
+ * verified (same hash), mismatch (different hash: the document changed),
+ * or not_anchored (the chain has no record for it).
  */
-export async function verifyOnChain(
-  recordId: string,
-  fileHashHex: string
-): Promise<boolean> {
+export async function verifyOnChain(recordId: string, fileHashHex: string): Promise<OnChainCheck> {
   if (!/^[0-9a-fA-F]{64}$/.test(fileHashHex)) {
     throw new Error("Invalid file hash: expected a 64-character SHA-256 hex digest");
   }
 
-  const contract = getContract();
-  const recordIdBytes32 = id(recordId);
-  const dataHashBytes32 = `0x${fileHashHex}`;
+  const { contract } = await connect();
+  const record = await contract.getRecord(id(recordId));
+  if (record.timestamp === 0n) return { status: "not_anchored" };
 
-  return contract.verifyRecord(recordIdBytes32, dataHashBytes32);
+  const anchoredAt = new Date(Number(record.timestamp) * 1000).toISOString();
+  return record.dataHash.toLowerCase() === `0x${fileHashHex.toLowerCase()}`
+    ? { status: "verified", anchoredAt }
+    : { status: "mismatch", anchoredAt };
+}
+
+/** verifyOnChain for API responses: never throws, reports why a check couldn't run. */
+export async function checkOnChain(
+  recordId: string,
+  fileHashHex: string
+): Promise<OnChainCheck | { status: "disabled" } | { status: "unavailable"; error: string }> {
+  if (process.env.BLOCKCHAIN_ENABLED !== "true") return { status: "disabled" };
+  try {
+    return await verifyOnChain(recordId, fileHashHex);
+  } catch (e: any) {
+    return { status: "unavailable", error: e?.message ?? "Blockchain check failed." };
+  }
 }

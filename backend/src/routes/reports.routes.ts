@@ -3,7 +3,7 @@ import multer from "multer";
 import { z } from "zod";
 import { supabaseForRequest, supabaseAdmin } from "../config/supabase.js";
 import { requireAuth } from "../middleware/auth.js";
-import { sha256Hex, anchorHashOnChain } from "../services/blockchain.service.js";
+import { sha256Hex, anchorHashOnChain, checkOnChain } from "../services/blockchain.service.js";
 import { analyzeReport } from "../services/ai.service.js";
 
 const router = Router();
@@ -157,6 +157,42 @@ router.get("/:id/file", async (req, res) => {
   }
 
   res.json({ url: signed.signedUrl, expires_in: SIGNED_URL_SECONDS });
+});
+
+/**
+ * GET /api/reports/:id/verify
+ * Re-hashes the stored file and compares it with (a) the hash recorded at
+ * upload and (b) the hash anchored on-chain. Reports without a stored file
+ * (seeded demo data) are checked on-chain using their recorded hash.
+ */
+router.get("/:id/verify", async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Invalid report ID." });
+
+  const { data: visible, error } = await reportsForUser(req).eq("report_id", id.data).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!visible) return res.status(404).json({ error: "Not found or not authorized" });
+
+  const { data: report, error: reportErr } = await supabaseAdmin
+    .from("medical_reports")
+    .select("file_url, file_hash")
+    .eq("id", id.data)
+    .single();
+  if (reportErr) return res.status(500).json({ error: reportErr.message });
+
+  // Storage serves a cached copy for a while after an object is overwritten,
+  // which would hide a swapped file. The unique query string bypasses it.
+  const { data: blob } = await supabaseAdmin.storage
+    .from(REPORTS_BUCKET)
+    .download(`${report.file_url}?verify=${Date.now()}`);
+  const computedHash = blob ? sha256Hex(Buffer.from(await blob.arrayBuffer())) : null;
+
+  res.json({
+    recorded_hash: report.file_hash,
+    computed_hash: computedHash,
+    file: computedHash === null ? "missing" : computedHash === report.file_hash ? "match" : "changed",
+    chain: await checkOnChain(id.data, computedHash ?? report.file_hash),
+  });
 });
 
 router.get("/:id", async (req, res) => {
