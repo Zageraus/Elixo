@@ -1,6 +1,6 @@
 import { Contract, JsonRpcProvider, Wallet, id } from "ethers";
 import { createHash } from "crypto";
-import { supabaseAdmin } from "../config/supabase.js";
+import { prisma } from "../config/prisma.js";
 
 const ABI = [
   "function anchorRecord(bytes32 recordId, bytes32 dataHash, string recordType) external",
@@ -100,30 +100,21 @@ export async function anchorHashOnChain(params: {
 
   const { contract, chain } = await connect();
 
-  const targetColumn =
-    recordType === "report" ? "report_id" : "prescription_id";
+  const target = recordType === "report" ? { report_id: recordId } : { prescription_id: recordId };
 
-  await supabaseAdmin
-    .from("blockchain_transactions")
-    .delete()
-    .eq(targetColumn, recordId)
-    .neq("status", "confirmed");
+  await prisma.blockchain_transactions.deleteMany({
+    where: { ...target, status: { not: "confirmed" } },
+  });
 
-  const { data: txRow, error: insertErr } = await supabaseAdmin
-    .from("blockchain_transactions")
-    .insert({
-      [targetColumn]: recordId,
+  const txRow = await prisma.blockchain_transactions.create({
+    data: {
+      ...target,
       chain,
       tx_hash: `pending-${recordId}-${Date.now()}`,
       data_hash: fileHashHex,
       status: "pending",
-    })
-    .select()
-    .single();
-
-  if (insertErr) {
-    throw insertErr;
-  }
+    },
+  });
 
   try {
     // Convert the UUID string to a deterministic bytes32 identifier.
@@ -142,20 +133,16 @@ export async function anchorHashOnChain(params: {
       throw new Error("Blockchain transaction was not confirmed successfully");
     }
 
-    const { error: updateErr } = await supabaseAdmin
-      .from("blockchain_transactions")
-      .update({
+    await prisma.blockchain_transactions.update({
+      where: { id: txRow.id },
+      data: {
         tx_hash: receipt.hash,
-        block_number: receipt.blockNumber,
+        block_number: BigInt(receipt.blockNumber),
         status: "confirmed",
         gas_used: receipt.gasUsed?.toString(),
-        confirmed_at: new Date().toISOString(),
-      })
-      .eq("id", txRow.id);
-
-    if (updateErr) {
-      throw updateErr;
-    }
+        confirmed_at: new Date(),
+      },
+    });
 
     return {
       txHash: receipt.hash,
@@ -164,10 +151,10 @@ export async function anchorHashOnChain(params: {
     };
   } catch (err) {
     // Preserve the existing failed-transaction status update.
-    await supabaseAdmin
-      .from("blockchain_transactions")
-      .update({ status: "failed" })
-      .eq("id", txRow.id);
+    await prisma.blockchain_transactions.update({
+      where: { id: txRow.id },
+      data: { status: "failed" },
+    });
 
     throw err;
   }

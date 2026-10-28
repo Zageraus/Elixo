@@ -2,11 +2,14 @@ import { Router } from "express";
 import { randomBytes } from "crypto";
 import { verifyMessage, id } from "ethers";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { prisma, toNumber } from "../config/prisma.js";
 import { supabaseAdmin } from "../config/supabase.js";
-import { issueAppJwt } from "../middleware/auth.js";
+import { issueAppJwt, requireAuth } from "../middleware/auth.js";
 import { createClient } from "@supabase/supabase-js";
 
 const router = Router();
+// Supabase Auth checks email passwords (stored as bcrypt hashes in auth.users).
 const supabaseAuth = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_ANON_KEY!,
@@ -15,7 +18,7 @@ const supabaseAuth = createClient(
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 
 /**
- * users.wallet_address is NOT NULL, so email accounts get a placeholder
+ * users.wallet_address is unique, so email accounts get a placeholder
  * address derived from their Supabase Auth user id. Nobody holds a private
  * key for it, so it can never be used for wallet sign-in, and it is never
  * returned to the client.
@@ -24,8 +27,8 @@ function emailAccountWallet(authUserId: string): string {
   return `0x${id(`email-account:${authUserId}`).slice(-40)}`;
 }
 
-function publicWallet(walletAddress: string, authUserId: string): string {
-  return walletAddress === emailAccountWallet(authUserId) ? "" : walletAddress;
+function publicWallet(walletAddress: string | null, authUserId: string): string {
+  return !walletAddress || walletAddress === emailAccountWallet(authUserId) ? "" : walletAddress;
 }
 
 /**
@@ -39,7 +42,7 @@ function publicWallet(walletAddress: string, authUserId: string): string {
  *         -> server recovers the signer address from the signature,
  *            checks it matches wallet_address AND the nonce is unexpired
  *            + unused, marks it consumed, looks up/creates the user row,
- *            and returns a signed JWT (also valid as a Supabase RLS token).
+ *            and returns a signed JWT.
  */
 
 router.post("/nonce", async (req, res) => {
@@ -49,14 +52,10 @@ router.post("/nonce", async (req, res) => {
 
   const wallet = parsed.data.wallet_address.toLowerCase();
   const nonce = randomBytes(16).toString("hex");
-  const expires_at = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 min
 
-  const { error } = await supabaseAdmin.from("auth_nonces").insert({
-    wallet_address: wallet,
-    nonce,
-    expires_at,
+  await prisma.auth_nonces.create({
+    data: { wallet_address: wallet, nonce, expires_at: new Date(Date.now() + 5 * 60 * 1000) }, // 5 min
   });
-  if (error) return res.status(500).json({ error: error.message });
 
   const message =
     `HealthChain wants you to sign in with your Ethereum account:\n${wallet}\n\n` +
@@ -92,24 +91,23 @@ router.post("/verify", async (req, res) => {
   // 2. Extract & validate the nonce embedded in the signed message.
   const nonceMatch = parsed.data.message.match(/Nonce:\s*([a-f0-9]+)/i);
   if (!nonceMatch) return res.status(400).json({ error: "Nonce missing from message" });
-  const nonce = nonceMatch[1];
 
-  const { data: nonceRow, error: nonceErr } = await supabaseAdmin
-    .from("auth_nonces")
-    .select("*")
-    .eq("wallet_address", wallet)
-    .eq("nonce", nonce)
-    .is("consumed_at", null)
-    .gte("expires_at", new Date().toISOString())
-    .maybeSingle();
-
-  if (nonceErr || !nonceRow) {
+  // Consuming the nonce is a single conditional UPDATE, so two requests
+  // racing with the same signature can't both succeed.
+  const { count: consumed } = await prisma.auth_nonces.updateMany({
+    where: {
+      wallet_address: wallet,
+      nonce: nonceMatch[1],
+      consumed_at: null,
+      expires_at: { gte: new Date() },
+    },
+    data: { consumed_at: new Date() },
+  });
+  if (consumed !== 1) {
     return res.status(401).json({ error: "Nonce invalid, expired, or already used" });
   }
 
-  await supabaseAdmin.from("auth_nonces").update({ consumed_at: new Date().toISOString() }).eq("id", nonceRow.id);
-
-  // Method 2: Admin setup passcode check
+  // Admin setup passcode check
   const providedAdminKey = parsed.data.admin_key?.trim();
   const wantsAdmin = Boolean(providedAdminKey);
   if (wantsAdmin) {
@@ -120,48 +118,28 @@ router.post("/verify", async (req, res) => {
   }
 
   // 3. Find or create the user (first-time wallets default to 'patient' unless valid admin_key is supplied).
-  let { data: user, error: userErr } = await supabaseAdmin
-    .from("users")
-    .select("*")
-    .eq("wallet_address", wallet)
-    .maybeSingle();
-
-  if (userErr) return res.status(500).json({ error: userErr.message });
-
-  const targetRole = wantsAdmin ? "admin" : "patient";
+  let user = await prisma.users.findUnique({ where: { wallet_address: wallet } });
 
   if (!user) {
-    const { data: created, error: createErr } = await supabaseAdmin
-      .from("users")
-      .insert({
+    user = await prisma.users.create({
+      data: {
         wallet_address: wallet,
-        role: targetRole,
+        role: wantsAdmin ? "admin" : "patient",
         full_name: wantsAdmin ? `Admin ${wallet.slice(0, 8)}` : `User ${wallet.slice(0, 8)}`,
-      })
-      .select()
-      .single();
-    if (createErr) return res.status(500).json({ error: createErr.message });
-    user = created;
+      },
+    });
   } else if (wantsAdmin && user.role !== "admin") {
     // Elevate existing user if a valid admin_key was provided
-    const { data: updated, error: updateErr } = await supabaseAdmin
-      .from("users")
-      .update({ role: "admin" })
-      .eq("id", user.id)
-      .select()
-      .single();
-    if (updateErr) return res.status(500).json({ error: updateErr.message });
-    user = updated;
+    user = await prisma.users.update({ where: { id: user.id }, data: { role: "admin" } });
   }
 
   if (!user.is_active) return res.status(403).json({ error: "Account disabled" });
 
-  // 4. Issue the JWT (API session token + Supabase RLS token, see auth.ts).
+  // 4. Issue the JWT.
   const token = issueAppJwt({ app_user_id: user.id, app_role: user.role, wallet_address: wallet });
 
   res.json({ token, user: { id: user.id, role: user.role, full_name: user.full_name, wallet_address: wallet } });
 });
-
 
 /**
  * EMAIL REGISTRATION
@@ -201,107 +179,75 @@ router.post("/register", async (req, res) => {
     });
   }
 
+  if (isDoctor) {
+    const existingLicense = await prisma.doctor_profiles.findUnique({
+      where: { license_number: parsed.data.license_number! },
+      select: { user_id: true },
+    });
+    if (existingLicense) {
+      return res.status(409).json({ error: "A doctor with this license number is already registered." });
+    }
+  }
+
+  // Create a real Supabase Auth account (it stores the bcrypt password hash).
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password: parsed.data.password,
+    email_confirm: true,
+    user_metadata: { full_name },
+  });
+
+  if (authError) {
+    const duplicate = /already registered|already exists|duplicate/i.test(authError.message);
+    return res.status(duplicate ? 409 : 400).json({
+      error: duplicate ? "An account with this email already exists. Please log in." : authError.message,
+    });
+  }
+  if (!authData.user) {
+    return res.status(500).json({ error: "Could not create the account." });
+  }
+
+  // The users row and (for doctors) the doctor_profiles row are written in
+  // ONE transaction: either both exist or neither does.
+  let user;
   try {
-    if (isDoctor) {
-      const { data: existingLicense } = await supabaseAdmin
-        .from("doctor_profiles")
-        .select("user_id")
-        .eq("license_number", parsed.data.license_number!)
-        .maybeSingle();
-      if (existingLicense) {
-        return res.status(409).json({ error: "A doctor with this license number is already registered." });
-      }
-    }
-
-    // Create a real Supabase Auth account.
-    const { data: authData, error: authError } =
-      await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: parsed.data.password,
-        email_confirm: true,
-        user_metadata: { full_name },
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.users.create({
+        data: { email, full_name, role: parsed.data.role, wallet_address: emailAccountWallet(authData.user.id) },
       });
-
-    if (authError) {
-      const duplicate =
-        /already registered|already exists|duplicate/i.test(authError.message);
-
-      return res.status(duplicate ? 409 : 400).json({
-        error: duplicate
-          ? "An account with this email already exists. Please log in."
-          : authError.message,
-      });
-    }
-
-    if (!authData.user) {
-      return res.status(500).json({ error: "Could not create the account." });
-    }
-
-    // Use the validated registration role (patient or doctor).
-    // Admin registration remains unavailable through this endpoint.
-    const { data: user, error: userError } = await supabaseAdmin
-      .from("users")
-      .insert({
-        email,
-        full_name,
-        role: parsed.data.role,
-        wallet_address: emailAccountWallet(authData.user.id),
-      })
-      .select("*")
-      .single();
-
-    if (userError) {
-      // Avoid leaving an orphaned Auth account if the app user cannot be created.
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-      return res.status(500).json({ error: userError.message });
-    }
-
-    if (isDoctor) {
-      const { error: profileError } = await supabaseAdmin.from("doctor_profiles").insert({
-        user_id: user.id,
-        specialization: parsed.data.specialization,
-        license_number: parsed.data.license_number,
-        consultation_fee: parsed.data.consultation_fee,
-      });
-
-      if (profileError) {
-        // Roll back both the app user and the Auth account.
-        await supabaseAdmin.from("users").delete().eq("id", user.id);
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-        const duplicate = profileError.code === "23505";
-        return res.status(duplicate ? 409 : 500).json({
-          error: duplicate
-            ? "A doctor with this license number is already registered."
-            : profileError.message,
+      if (isDoctor) {
+        await tx.doctor_profiles.create({
+          data: {
+            user_id: created.id,
+            specialization: parsed.data.specialization!,
+            license_number: parsed.data.license_number!,
+            consultation_fee: parsed.data.consultation_fee!,
+          },
         });
       }
-    }
-
-    if (!user.is_active) {
-      return res.status(403).json({ error: "Account disabled." });
-    }
-
-    // Keep using the application's JWT for existing API and RLS behavior.
-    const token = issueAppJwt({
-      app_user_id: user.id,
-      app_role: user.role,
-      wallet_address: "",
+      return created;
     });
-
-    return res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        role: user.role,
-        full_name: user.full_name,
-        email: user.email,
-        wallet_address: "",
-      },
-    });
-  } catch (error) {
-    console.error("Email registration failed:", error);
-    return res.status(500).json({ error: "Registration failed." });
+  } catch (e) {
+    // The transaction rolled back; also remove the Auth account so the
+    // email can be used again.
+    await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const target = String((e.meta as { target?: unknown } | undefined)?.target ?? "");
+      return res.status(409).json({
+        error: target.includes("license")
+          ? "A doctor with this license number is already registered."
+          : "An account with this email already exists. Please log in.",
+      });
+    }
+    throw e;
   }
+
+  const token = issueAppJwt({ app_user_id: user.id, app_role: user.role, wallet_address: "" });
+
+  return res.status(201).json({
+    token,
+    user: { id: user.id, role: user.role, full_name: user.full_name, email: user.email, wallet_address: "" },
+  });
 });
 
 /**
@@ -320,84 +266,74 @@ router.post("/login", async (req, res) => {
 
   const email = parsed.data.email.toLowerCase();
 
-  try {
-    // Verify the password using Supabase Auth.
-    const { data: authData, error: authError } =
-      await supabaseAuth.auth.signInWithPassword({
-        email,
-        password: parsed.data.password,
-      });
+  // Verify the password using Supabase Auth.
+  const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
+    email,
+    password: parsed.data.password,
+  });
 
-    if (authError || !authData.user) {
-      return res.status(401).json({ error: "Invalid email or password." });
-    }
-
-    // Look up the application's user record.
-    const { data: user, error: userError } = await supabaseAdmin
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (userError) {
-      return res.status(500).json({ error: userError.message });
-    }
-
-    // A Supabase Auth account without an app user row is not automatically
-    // assigned a privileged role. Create it as a patient.
-    let appUser = user;
-
-    if (!appUser) {
-      const metadataName = authData.user.user_metadata?.full_name;
-      const full_name =
-        typeof metadataName === "string" && metadataName.trim()
-          ? metadataName.trim()
-          : email.split("@")[0];
-
-      const { data: created, error: createError } = await supabaseAdmin
-        .from("users")
-        .insert({
-          email,
-          full_name,
-          role: "patient",
-          wallet_address: emailAccountWallet(authData.user.id),
-        })
-        .select("*")
-        .single();
-
-      if (createError) {
-        return res.status(500).json({ error: createError.message });
-      }
-
-      appUser = created;
-    }
-
-    if (!appUser.is_active) {
-      return res.status(403).json({ error: "Account disabled." });
-    }
-
-    const wallet_address = publicWallet(appUser.wallet_address, authData.user.id);
-
-    const token = issueAppJwt({
-      app_user_id: appUser.id,
-      app_role: appUser.role,
-      wallet_address,
-    });
-
-    return res.json({
-      token,
-      user: {
-        id: appUser.id,
-        role: appUser.role,
-        full_name: appUser.full_name,
-        email: appUser.email,
-        wallet_address,
-      },
-    });
-  } catch (error) {
-    console.error("Email login failed:", error);
-    return res.status(500).json({ error: "Login failed." });
+  if (authError || !authData.user) {
+    return res.status(401).json({ error: "Invalid email or password." });
   }
+
+  // Look up the application's user record. A Supabase Auth account without
+  // an app user row is never given a privileged role: create it as a patient.
+  let appUser = await prisma.users.findUnique({ where: { email } });
+
+  if (!appUser) {
+    const metadataName = authData.user.user_metadata?.full_name;
+    const full_name =
+      typeof metadataName === "string" && metadataName.trim() ? metadataName.trim() : email.split("@")[0];
+
+    appUser = await prisma.users.create({
+      data: { email, full_name, role: "patient", wallet_address: emailAccountWallet(authData.user.id) },
+    });
+  }
+
+  if (!appUser.is_active) {
+    return res.status(403).json({ error: "Account disabled." });
+  }
+
+  const wallet_address = publicWallet(appUser.wallet_address, authData.user.id);
+
+  const token = issueAppJwt({ app_user_id: appUser.id, app_role: appUser.role, wallet_address });
+
+  return res.json({
+    token,
+    user: { id: appUser.id, role: appUser.role, full_name: appUser.full_name, email: appUser.email, wallet_address },
+  });
+});
+
+/**
+ * GET /api/auth/me
+ * The signed-in user, read fresh from the database (role and active status
+ * included), so the frontend never has to trust what it stored at login.
+ */
+router.get("/me", requireAuth, async (req, res) => {
+  const user = await prisma.users.findUnique({
+    where: { id: req.auth!.app_user_id },
+    select: {
+      id: true,
+      role: true,
+      full_name: true,
+      email: true,
+      phone: true,
+      is_active: true,
+      created_at: true,
+      doctor_profile: { select: { specialization: true, license_number: true, consultation_fee: true } },
+    },
+  });
+  if (!user) return res.status(404).json({ error: "Account not found." });
+
+  const { doctor_profile, ...rest } = user;
+  res.json({
+    ...rest,
+    // Email accounts carry a placeholder address internally; the token holds the public one.
+    wallet_address: req.auth!.wallet_address,
+    doctor_profile: doctor_profile
+      ? { ...doctor_profile, consultation_fee: toNumber(doctor_profile.consultation_fee) }
+      : null,
+  });
 });
 
 /**
@@ -426,69 +362,44 @@ router.post("/demo", async (req, res) => {
     doctor: "0x222222222222222222222222222222222222bbbb",
     patient: "0x333333333333333333333333333333333333cccc",
   };
+  const demoNames: Record<string, string> = {
+    admin: "Alice Admin (Demo)",
+    doctor: "Dr. Bob Rao (Demo)",
+    patient: "Chitra Menon (Demo)",
+  };
 
-  let { data: user, error: userErr } = await supabaseAdmin
-    .from("users")
-    .select("*")
-    .eq("wallet_address", demoWallets[role])
-    .maybeSingle();
-
-  if (userErr) return res.status(500).json({ error: userErr.message });
+  let user = await prisma.users.findUnique({ where: { wallet_address: demoWallets[role] } });
 
   if (!user) {
-    const demoNames: Record<string, string> = {
-      admin: "Alice Admin (Demo)",
-      doctor: "Dr. Bob Rao (Demo)",
-      patient: "Chitra Menon (Demo)",
-    };
-
-    const wallet = demoWallets[role];
-    const name = demoNames[role];
-
-    const { data: created, error: createErr } = await supabaseAdmin
-      .from("users")
-      .upsert({
-        wallet_address: wallet,
-        role,
-        full_name: name,
-      })
-      .select()
-      .single();
-
-    if (createErr) return res.status(500).json({ error: createErr.message });
-    user = created;
-
-    if (role === "doctor") {
-      await supabaseAdmin.from("doctor_profiles").upsert({
-        user_id: user.id,
-        specialization: "Cardiology",
-        license_number: "LIC-DEMO-001",
-        years_experience: 10,
-        consultation_fee: 150.0,
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.users.create({
+        data: { wallet_address: demoWallets[role], role, full_name: demoNames[role] },
       });
-    } else if (role === "patient") {
-      await supabaseAdmin.from("patient_profiles").upsert({
-        user_id: user.id,
-        date_of_birth: "1990-04-12",
-        blood_group: "O+",
-      });
-    }
+      if (role === "doctor") {
+        await tx.doctor_profiles.create({
+          data: {
+            user_id: created.id,
+            specialization: "Cardiology",
+            license_number: "LIC-DEMO-001",
+            years_experience: 10,
+            consultation_fee: 150.0,
+          },
+        });
+      } else if (role === "patient") {
+        await tx.patient_profiles.create({
+          data: { user_id: created.id, date_of_birth: new Date("1990-04-12"), blood_group: "O+" },
+        });
+      }
+      return created;
+    });
   }
 
-  const token = issueAppJwt({
-    app_user_id: user.id,
-    app_role: user.role,
-    wallet_address: user.wallet_address,
-  });
+  const wallet_address = user.wallet_address ?? "";
+  const token = issueAppJwt({ app_user_id: user.id, app_role: user.role, wallet_address });
 
   res.json({
     token,
-    user: {
-      id: user.id,
-      role: user.role,
-      full_name: user.full_name,
-      wallet_address: user.wallet_address,
-    },
+    user: { id: user.id, role: user.role, full_name: user.full_name, wallet_address },
   });
 });
 

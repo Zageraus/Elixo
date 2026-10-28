@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../config/supabase.js";
+import { prisma, toNumber } from "../config/prisma.js";
 
 const OLLAMA_URL =
   process.env.OLLAMA_URL || "http://127.0.0.1:11434";
@@ -117,29 +117,25 @@ export async function analyzeReport(params: {
   // No OpenAI API call or embedding model is used.
   const parsed = await generateLocalAnalysis(reportText);
 
-  // Preserve the existing table and insert workflow.
-  // No database schema changes are made.
-  const { data: saved, error } = await supabaseAdmin
-    .from("ai_analyses")
-    .insert({
-      report_id: reportId,
-      summary: parsed.summary,
-      findings: {
-        flags: parsed.flags,
-        severity: parsed.severity,
-        recommendation: parsed.recommendation,
+  try {
+    const saved = await prisma.ai_analyses.create({
+      data: {
+        report_id: reportId,
+        summary: parsed.summary,
+        findings: {
+          flags: parsed.flags,
+          severity: parsed.severity,
+          recommendation: parsed.recommendation,
+        },
+        model_used: LOCAL_CHAT_MODEL,
+        confidence: parsed.confidence,
       },
-      model_used: LOCAL_CHAT_MODEL,
-      confidence: parsed.confidence,
-    })
-    .select()
-    .single();
-
-  if (error) {
+      select: { id: true, report_id: true, summary: true, findings: true, model_used: true, confidence: true, created_at: true },
+    });
+    return { ...saved, confidence: toNumber(saved.confidence) };
+  } catch (e) {
     throw new Error(
-      `Local AI analysis completed, but saving the result failed: ${error.message}`
+      `Local AI analysis completed, but saving the result failed: ${e instanceof Error ? e.message : e}`
     );
   }
-
-  return saved;
 }

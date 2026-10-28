@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { supabaseAdmin } from "../config/supabase.js";
+import { prisma } from "../config/prisma.js";
 
 export interface AppJwtPayload {
   app_user_id: string;
@@ -48,12 +48,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   // Tokens live for 12h, so check the account on every request: a user an
   // admin deactivated or deleted loses access immediately.
-  const { data: user, error } = await supabaseAdmin
-    .from("users")
-    .select("is_active")
-    .eq("id", decoded.app_user_id)
-    .maybeSingle();
-  if (error) return res.status(500).json({ error: "Could not verify account." });
+  let user: { is_active: boolean } | null;
+  try {
+    user = await prisma.users.findUnique({ where: { id: decoded.app_user_id }, select: { is_active: true } });
+  } catch (e) {
+    return next(e);
+  }
   if (!user?.is_active) {
     return res.status(401).json({ error: "This account has been deactivated or removed." });
   }

@@ -9,27 +9,33 @@
  * are replaced.
  */
 import "dotenv/config";
-import { supabaseAdmin } from "../config/supabase.js";
+import { prisma } from "../config/prisma.js";
 import { anchorHashOnChain, hashPrescription, verifyOnChain } from "../services/blockchain.service.js";
 
 type Target = { id: string; type: "report" | "prescription"; label: string; hash: string };
 
 async function loadTargets(): Promise<Target[]> {
   const [reports, prescriptions] = await Promise.all([
-    supabaseAdmin.from("medical_reports").select("id, title, file_hash"),
-    supabaseAdmin.from("prescriptions").select("id, medications"),
+    prisma.medical_reports.findMany({ select: { id: true, title: true, file_hash: true } }),
+    prisma.prescriptions.findMany({ select: { id: true, items: { orderBy: { line_no: "asc" } } } }),
   ]);
-  if (reports.error) throw reports.error;
-  if (prescriptions.error) throw prescriptions.error;
 
   return [
-    ...reports.data.map((r) => ({ id: r.id, type: "report" as const, label: r.title.trim(), hash: r.file_hash })),
-    ...prescriptions.data.map((p) => ({
-      id: p.id,
-      type: "prescription" as const,
-      label: p.medications.map((m: { name: string }) => m.name).join(", "),
-      hash: hashPrescription(p.medications),
-    })),
+    ...reports.map((r) => ({ id: r.id, type: "report" as const, label: r.title.trim(), hash: r.file_hash })),
+    ...prescriptions.map((p) => {
+      const medications = p.items.map((i) => ({
+        name: i.medicine_name,
+        dosage: i.dosage,
+        frequency: i.frequency,
+        duration_days: i.duration_days,
+      }));
+      return {
+        id: p.id,
+        type: "prescription" as const,
+        label: medications.map((m) => m.name).join(", "),
+        hash: hashPrescription(medications),
+      };
+    }),
   ];
 }
 
@@ -54,10 +60,9 @@ async function main() {
       }
 
       // Not on this chain: any "confirmed" row we hold is from an old chain.
-      await supabaseAdmin
-        .from("blockchain_transactions")
-        .delete()
-        .eq(t.type === "report" ? "report_id" : "prescription_id", t.id);
+      await prisma.blockchain_transactions.deleteMany({
+        where: t.type === "report" ? { report_id: t.id } : { prescription_id: t.id },
+      });
 
       const { txHash } = await anchorHashOnChain({ recordId: t.id, fileHashHex: t.hash, recordType: t.type });
       counts.anchored++;
@@ -74,7 +79,9 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(err.message ?? err);
-  process.exitCode = 1;
-});
+main()
+  .catch((err) => {
+    console.error(err.message ?? err);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

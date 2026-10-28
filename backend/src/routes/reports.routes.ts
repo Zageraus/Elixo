@@ -1,10 +1,13 @@
 import { Router, Request } from "express";
+import { Prisma } from "@prisma/client";
 import multer from "multer";
 import { z } from "zod";
-import { supabaseForRequest, supabaseAdmin } from "../config/supabase.js";
+import { prisma, toNumber, withAuditUser } from "../config/prisma.js";
+import { supabaseAdmin } from "../config/supabase.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sha256Hex, anchorHashOnChain, checkOnChain } from "../services/blockchain.service.js";
 import { analyzeReport } from "../services/ai.service.js";
+import { paginated, parsePage } from "../utils/pagination.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -15,7 +18,8 @@ router.use(requireAuth);
  * POST /api/reports
  * Full pipeline for a new medical report:
  *   1. Upload file bytes to Supabase Storage
- *   2. Insert medical_reports row (RLS-scoped: only patient/assigned doctor/admin can do this)
+ *   2. Insert the medical_reports row (only the patient, the assigned
+ *      doctor or an admin may add a report)
  *   3. sha256 the file -> anchor on-chain (Workflow 3)
  *   4. If raw_text/extracted text is present -> run RAG analysis (Workflow 2)
  */
@@ -25,14 +29,18 @@ router.post("/", upload.single("file"), async (req, res) => {
     doctor_id: z.string().uuid().optional(),
     appointment_id: z.string().uuid().optional(),
     report_type: z.enum(["lab_result", "imaging", "discharge_summary", "consultation_note", "other"]),
-    title: z.string().min(1),
-    raw_text: z.string().optional(), // pre-extracted text (OCR done client-side or by a separate worker)
+    title: z.string().trim().min(1).max(200),
+    raw_text: z.string().max(20000).optional(), // pre-extracted text (OCR done client-side or by a separate worker)
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   if (!req.file) return res.status(400).json({ error: "file is required" });
 
-  const db = supabaseForRequest(req.rawJwt!);
+  const me = req.auth!.app_user_id;
+  if (req.auth!.app_role !== "admin" && parsed.data.patient_id !== me && parsed.data.doctor_id !== me) {
+    return res.status(403).json({ error: "You can only add reports for yourself or your own patients." });
+  }
+
   const fileHash = sha256Hex(req.file.buffer);
   const storagePath = `reports/${parsed.data.patient_id}/${Date.now()}_${req.file.originalname}`;
 
@@ -41,31 +49,30 @@ router.post("/", upload.single("file"), async (req, res) => {
   });
   if (uploadErr) return res.status(500).json({ error: uploadErr.message });
 
-  const { data: report, error: insertErr } = await db
-    .from("medical_reports")
-    .insert({ ...parsed.data, file_url: storagePath, file_hash: fileHash })
-    .select()
-    .single();
-  if (insertErr) return res.status(500).json({ error: insertErr.message });
+  const report = await withAuditUser(me, (tx) =>
+    tx.medical_reports.create({
+      data: { ...parsed.data, raw_text: parsed.data.raw_text || null, file_url: storagePath, file_hash: fileHash },
+    })
+  );
 
   // Fire-and-report: anchor on-chain + AI analysis. In production these
   // would be queued (e.g. via a job table + worker) rather than awaited
   // inline, but sync here keeps the demo/grading flow simple to trace.
   const results: Record<string, unknown> = { report };
 
-if (process.env.BLOCKCHAIN_ENABLED === "true") {
-  try {
-    results.blockchain = await anchorHashOnChain({
-      recordId: report.id,
-      fileHashHex: fileHash,
-      recordType: "report",
-    });
-  } catch (e: any) {
-    results.blockchain_error = e.message;
+  if (process.env.BLOCKCHAIN_ENABLED === "true") {
+    try {
+      results.blockchain = await anchorHashOnChain({
+        recordId: report.id,
+        fileHashHex: fileHash,
+        recordType: "report",
+      });
+    } catch (e: any) {
+      results.blockchain_error = e.message;
+    }
+  } else {
+    results.blockchain = { status: "disabled" };
   }
-} else {
-  results.blockchain = { status: "disabled" };
-}
 
   if (parsed.data.raw_text) {
     try {
@@ -82,17 +89,53 @@ if (process.env.BLOCKCHAIN_ENABLED === "true") {
   res.status(201).json(results);
 });
 
+type ReportViewRow = {
+  report_id: string;
+  patient_id: string;
+  doctor_id: string | null;
+  title: string;
+  report_type: string;
+  file_hash: string;
+  report_created_at: Date;
+  summary: string | null;
+  findings: unknown;
+  confidence: Prisma.Decimal | null;
+  model_used: string | null;
+  tx_hash: string | null;
+  blockchain_status: string | null;
+  block_number: bigint | null;
+  chain: string | null;
+};
+
 /**
- * v_report_with_analysis runs with its owner's rights, so RLS on
- * medical_reports doesn't filter it. Apply the same rule as the
- * p_reports_select policy here: admins see everything, everyone else only
- * reports where they are the patient or the assigned doctor.
+ * Access rule for reports (same as the p_reports_select RLS policy): admins
+ * see everything, everyone else only reports where they are the patient or
+ * the assigned doctor. Returned as SQL for the view query below.
  */
-function reportsForUser(req: Request) {
-  const query = supabaseForRequest(req.rawJwt!).from("v_report_with_analysis").select("*");
-  if (req.auth!.app_role === "admin") return query;
+function reportAccessSql(req: Request): Prisma.Sql {
+  if (req.auth!.app_role === "admin") return Prisma.sql`true`;
   const me = req.auth!.app_user_id;
-  return query.or(`patient_id.eq.${me},doctor_id.eq.${me}`);
+  return Prisma.sql`(patient_id = ${me}::uuid or doctor_id = ${me}::uuid)`;
+}
+
+function reportAccessWhere(req: Request): Prisma.medical_reportsWhereInput {
+  if (req.auth!.app_role === "admin") return {};
+  const me = req.auth!.app_user_id;
+  return { OR: [{ patient_id: me }, { doctor_id: me }] };
+}
+
+/** Reads v_report_with_analysis (migration 011) for the reports this user may see. */
+async function reportsFromView(req: Request, extra: Prisma.Sql, limit?: { take: number; skip: number }) {
+  const page = limit ? Prisma.sql`limit ${limit.take} offset ${limit.skip}` : Prisma.empty;
+  const rows = await prisma.$queryRaw<ReportViewRow[]>`
+    select report_id, patient_id, doctor_id, title, report_type::text as report_type, file_hash,
+           report_created_at, summary, findings, confidence, model_used, tx_hash,
+           blockchain_status::text as blockchain_status, block_number, chain
+    from v_report_with_analysis
+    where ${reportAccessSql(req)} and ${extra}
+    order by report_created_at desc
+    ${page}`;
+  return rows.map((r) => ({ ...r, confidence: toNumber(r.confidence) }));
 }
 
 const REPORTS_BUCKET = "medical-reports";
@@ -105,11 +148,10 @@ const SIGNED_URL_SECONDS = 60;
  */
 async function reportsWithStoredFile(reportIds: string[]): Promise<Set<string>> {
   if (reportIds.length === 0) return new Set();
-  const { data: rows, error } = await supabaseAdmin
-    .from("medical_reports")
-    .select("id, file_url")
-    .in("id", reportIds);
-  if (error) throw error;
+  const rows = await prisma.medical_reports.findMany({
+    where: { id: { in: reportIds } },
+    select: { id: true, file_url: true },
+  });
 
   const folders = new Map<string, { id: string; name: string }[]>();
   for (const r of rows) {
@@ -129,6 +171,14 @@ async function reportsWithStoredFile(reportIds: string[]): Promise<Set<string>> 
   return stored;
 }
 
+/** Loads a report the signed-in user may see, or null. */
+function findVisibleReport(req: Request, id: string) {
+  return prisma.medical_reports.findFirst({
+    where: { id, ...reportAccessWhere(req) },
+    select: { id: true, file_url: true, file_hash: true },
+  });
+}
+
 /**
  * GET /api/reports/:id/file -> { url, expires_in }
  * Same access rule as the report itself (patient, assigned doctor, admin).
@@ -138,16 +188,8 @@ router.get("/:id/file", async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: "Invalid report ID." });
 
-  const { data: visible, error } = await reportsForUser(req).eq("report_id", id.data).maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
-  if (!visible) return res.status(404).json({ error: "Not found or not authorized" });
-
-  const { data: report, error: reportErr } = await supabaseAdmin
-    .from("medical_reports")
-    .select("file_url")
-    .eq("id", id.data)
-    .single();
-  if (reportErr) return res.status(500).json({ error: reportErr.message });
+  const report = await findVisibleReport(req, id.data);
+  if (!report) return res.status(404).json({ error: "Not found or not authorized" });
 
   const { data: signed, error: signErr } = await supabaseAdmin.storage
     .from(REPORTS_BUCKET)
@@ -169,16 +211,8 @@ router.get("/:id/verify", async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: "Invalid report ID." });
 
-  const { data: visible, error } = await reportsForUser(req).eq("report_id", id.data).maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
-  if (!visible) return res.status(404).json({ error: "Not found or not authorized" });
-
-  const { data: report, error: reportErr } = await supabaseAdmin
-    .from("medical_reports")
-    .select("file_url, file_hash")
-    .eq("id", id.data)
-    .single();
-  if (reportErr) return res.status(500).json({ error: reportErr.message });
+  const report = await findVisibleReport(req, id.data);
+  if (!report) return res.status(404).json({ error: "Not found or not authorized" });
 
   // Storage serves a cached copy for a while after an object is overwritten,
   // which would hide a swapped file. The unique query string bypasses it.
@@ -196,22 +230,24 @@ router.get("/:id/verify", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const { data, error } = await reportsForUser(req).eq("report_id", req.params.id).maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: "Not found or not authorized" });
-  res.json(data);
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Invalid report ID." });
+
+  const [report] = await reportsFromView(req, Prisma.sql`report_id = ${id.data}::uuid`);
+  if (!report) return res.status(404).json({ error: "Not found or not authorized" });
+  res.json(report);
 });
 
+// GET /api/reports?page=&page_size=  -> newest first, paginated
 router.get("/", async (req, res) => {
-  const { data, error } = await reportsForUser(req).order("report_created_at", { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
+  const page = parsePage(req);
+  const [rows, total] = await Promise.all([
+    reportsFromView(req, Prisma.sql`true`, page),
+    prisma.medical_reports.count({ where: reportAccessWhere(req) }),
+  ]);
 
-  try {
-    const stored = await reportsWithStoredFile(data.map((r) => r.report_id));
-    res.json(data.map((r) => ({ ...r, has_file: stored.has(r.report_id) })));
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
+  const stored = await reportsWithStoredFile(rows.map((r) => r.report_id));
+  res.json(paginated(rows.map((r) => ({ ...r, has_file: stored.has(r.report_id) })), total, page));
 });
 
 export default router;

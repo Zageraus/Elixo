@@ -1,7 +1,6 @@
-
 import { Router } from "express";
 import { z } from "zod";
-import { supabaseAdmin, supabaseForRequest } from "../config/supabase.js";
+import { prisma, withAuditUser } from "../config/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { attachPayments } from "../services/payments.service.js";
 
@@ -16,56 +15,74 @@ router.get("/doctors", async (req, res) => {
     });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("users")
-    .select("id, full_name, doctor_profiles(specialization)")
-    .eq("role", "doctor")
-    .eq("is_active", true)
-    .order("full_name", { ascending: true });
-
-  if (error) {
-    console.error("Failed to load doctors:", error);
-    return res.status(500).json({ error: "Failed to load doctors." });
-  }
-
-  // doctor_profiles is 1:1 with users; PostgREST may return it as an object
-  // or a one-element array depending on how it resolves the relationship.
-  const doctors = (data ?? []).map((d: any) => {
-    const profile = Array.isArray(d.doctor_profiles) ? d.doctor_profiles[0] : d.doctor_profiles;
-    return { id: d.id, full_name: d.full_name, specialization: profile?.specialization ?? null };
+  const doctors = await prisma.users.findMany({
+    where: { role: "doctor", is_active: true },
+    select: { id: true, full_name: true, doctor_profile: { select: { specialization: true } } },
+    orderBy: { full_name: "asc" },
   });
 
-  return res.json(doctors);
+  res.json(
+    doctors.map((d) => ({ id: d.id, full_name: d.full_name, specialization: d.doctor_profile?.specialization ?? null }))
+  );
 });
 
-// List appointments using the request JWT.
+type PatientDashboardRow = {
+  patient_id: string;
+  full_name: string;
+  appointment_id: string;
+  scheduled_at: Date;
+  appointment_status: string;
+  doctor_name: string;
+  specialization: string | null;
+};
+
+type DoctorDashboardRow = {
+  doctor_id: string;
+  doctor_name: string;
+  appointment_id: string;
+  scheduled_at: Date;
+  status: string;
+  patient_id: string;
+  patient_name: string;
+  patient_report_count: bigint;
+};
+
+// List the signed-in user's appointments from the dashboard views
+// (db/migrations/003_views.sql). Views are read with a parameterised raw
+// query; the WHERE clause scopes rows to the signed-in user.
 router.get("/", async (req, res) => {
   if (!["patient", "doctor"].includes(req.auth!.app_role)) {
     return res.status(403).json({ error: "Insufficient role." });
   }
 
-  const db = supabaseForRequest(req.rawJwt!);
-  const isDoctor = req.auth!.app_role === "doctor";
+  const me = req.auth!.app_user_id;
 
-  // Views run with their owner's rights, so RLS on appointments doesn't
-  // filter them; scope the rows to the signed-in user here.
-  const { data, error } = await db
-    .from(isDoctor ? "v_doctor_dashboard" : "v_patient_dashboard")
-    .select("*")
-    .eq(isDoctor ? "doctor_id" : "patient_id", req.auth!.app_user_id)
-    .order("scheduled_at", { ascending: true });
-
-  if (error) {
-    console.error("Failed to load appointments:", error);
-    return res.status(500).json({ error: error.message });
+  if (req.auth!.app_role === "patient") {
+    const rows = await prisma.$queryRaw<PatientDashboardRow[]>`
+      select patient_id, full_name, appointment_id, scheduled_at,
+             appointment_status::text as appointment_status, doctor_name, specialization
+      from v_patient_dashboard
+      where patient_id = ${me}::uuid
+      order by scheduled_at`;
+    return res.json(await attachPayments(rows));
   }
 
-  try {
-    return res.json(await attachPayments(data ?? []));
-  } catch (e: any) {
-    console.error("Failed to load payment details:", e);
-    return res.status(500).json({ error: "Failed to load payment details." });
-  }
+  const rows = await prisma.$queryRaw<DoctorDashboardRow[]>`
+    select doctor_id, doctor_name, appointment_id, scheduled_at, status::text as status,
+           patient_id, patient_name, patient_report_count
+    from v_doctor_dashboard
+    where doctor_id = ${me}::uuid
+    order by scheduled_at`;
+
+  // Doctors see the allergies of patients who have an appointment with them.
+  const profiles = await prisma.patient_profiles.findMany({
+    where: { user_id: { in: [...new Set(rows.map((r) => r.patient_id))] } },
+    select: { user_id: true, allergies: true },
+  });
+  const allergiesByPatient = new Map(profiles.map((p) => [p.user_id, p.allergies]));
+
+  const withPayments = await attachPayments(rows);
+  res.json(withPayments.map((r) => ({ ...r, patient_allergies: allergiesByPatient.get(r.patient_id) ?? null })));
 });
 
 // Request an appointment as a patient.
@@ -87,40 +104,32 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  // Verify the selected doctor exists before using the admin client.
-  const { data: doctor, error: doctorError } = await supabaseAdmin
-    .from("users")
-    .select("id")
-    .eq("id", parsed.data.doctor_id)
-    .eq("role", "doctor")
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (doctorError) {
-    console.error("Doctor lookup failed:", doctorError);
-    return res.status(500).json({ error: "Could not verify the selected doctor." });
+  if (new Date(parsed.data.scheduled_at).getTime() < Date.now()) {
+    return res.status(400).json({ error: "Choose a date and time in the future." });
   }
 
+  const doctor = await prisma.users.findFirst({
+    where: { id: parsed.data.doctor_id, role: "doctor", is_active: true },
+    select: { id: true },
+  });
   if (!doctor) {
     return res.status(400).json({ error: "Selected doctor does not exist." });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("appointments")
-    .insert({
-      ...parsed.data,
-      patient_id: req.auth!.app_user_id,
-      status: "requested",
+  const me = req.auth!.app_user_id;
+  const appointment = await withAuditUser(me, (tx) =>
+    tx.appointments.create({
+      data: {
+        patient_id: me,
+        doctor_id: doctor.id,
+        scheduled_at: new Date(parsed.data.scheduled_at),
+        reason: parsed.data.reason || null,
+        status: "requested",
+      },
     })
-    .select()
-    .single();
+  );
 
-  if (error) {
-    console.error("Appointment creation failed:", error);
-    return res.status(500).json({ error: error.message });
-  }
-
-  return res.status(201).json(data);
+  res.status(201).json(appointment);
 });
 
 // Update appointment status: doctors/admins only.
@@ -134,47 +143,36 @@ router.patch("/:id/status", async (req, res) => {
     });
   }
 
-  const idSchema = z.string().uuid();
-  const parsedId = idSchema.safeParse(req.params.id);
-
+  const parsedId = z.string().uuid().safeParse(req.params.id);
   if (!parsedId.success) {
     return res.status(400).json({ error: "Invalid appointment ID." });
   }
 
-  const schema = z.object({
-    status: z.enum(["confirmed", "completed", "cancelled", "no_show"]),
-  });
-
-  const parsed = schema.safeParse(req.body);
+  const parsed = z
+    .object({ status: z.enum(["confirmed", "completed", "cancelled", "no_show"]) })
+    .safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const db = supabaseForRequest(req.rawJwt!);
+  const me = req.auth!.app_user_id;
+  const updated = await withAuditUser(me, async (tx) => {
+    const appt = await tx.appointments.findFirst({
+      where: { id: parsedId.data, ...(role === "doctor" ? { doctor_id: me } : {}) },
+      select: { id: true },
+    });
+    if (!appt) return null;
+    // trg_refund_on_cancel and trg_notify_appointment run in this same transaction.
+    return tx.appointments.update({ where: { id: appt.id }, data: { status: parsed.data.status } });
+  });
 
-  let query = db
-    .from("appointments")
-    .update({ status: parsed.data.status })
-    .eq("id", parsedId.data);
-
-  if (role === "doctor") {
-    query = query.eq("doctor_id", req.auth!.app_user_id);
-  }
-
-  const { data, error } = await query.select().maybeSingle();
-
-  if (error) {
-    console.error("Appointment status update failed:", error);
-    return res.status(500).json({ error: error.message });
-  }
-
-  if (!data) {
+  if (!updated) {
     return res.status(404).json({
       error: "Appointment not found or you are not authorized to update it.",
     });
   }
 
-  return res.json(data);
+  res.json(updated);
 });
 
 export default router;

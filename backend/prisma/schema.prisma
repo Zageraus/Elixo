@@ -1,0 +1,279 @@
+// Prisma ORM schema for the ELIXOR / HealthChain database.
+//
+// The database itself is defined by the SQL files in db/migrations (tables,
+// constraints, triggers, views, RLS and the stored procedure). This file maps
+// those tables to the type-safe Prisma Client used by every backend route.
+// After changing the SQL schema, run `npx prisma db pull` to compare, then
+// `npx prisma generate`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum user_role {
+  patient
+  doctor
+  admin
+}
+
+enum appointment_status {
+  requested
+  confirmed
+  completed
+  cancelled
+  no_show
+}
+
+enum report_type {
+  lab_result
+  imaging
+  discharge_summary
+  consultation_note
+  other
+}
+
+enum tx_status {
+  pending
+  confirmed
+  failed
+}
+
+enum notification_type {
+  appointment
+  report
+  prescription
+  system
+}
+
+enum payment_status {
+  paid
+  refunded
+}
+
+enum payment_method {
+  upi
+  card
+  netbanking
+}
+
+model users {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  wallet_address String?   @unique @db.Citext
+  role           user_role @default(patient)
+  full_name      String
+  email          String?   @unique @db.Citext
+  phone          String?
+  is_active      Boolean   @default(true)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  doctor_profile           doctor_profiles?
+  patient_profile          patient_profiles?
+  appointments_as_patient  appointments[]    @relation("AppointmentPatient")
+  appointments_as_doctor   appointments[]    @relation("AppointmentDoctor")
+  reports_as_patient       medical_reports[] @relation("ReportPatient")
+  reports_as_doctor        medical_reports[] @relation("ReportDoctor")
+  prescriptions_as_patient prescriptions[]   @relation("PrescriptionPatient")
+  prescriptions_as_doctor  prescriptions[]   @relation("PrescriptionDoctor")
+  notifications            notifications[]
+  audit_logs               audit_logs[]
+
+  @@index([role], map: "idx_users_role")
+}
+
+model auth_nonces {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  wallet_address String    @db.Citext
+  nonce          String    @unique
+  expires_at     DateTime  @db.Timestamptz(6)
+  consumed_at    DateTime? @db.Timestamptz(6)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([wallet_address], map: "idx_auth_nonces_wallet")
+}
+
+model doctor_profiles {
+  user_id          String   @id @db.Uuid
+  specialization   String
+  license_number   String   @unique
+  years_experience Int?     @db.SmallInt
+  consultation_fee Decimal? @db.Decimal(10, 2)
+  bio              String?
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model patient_profiles {
+  user_id           String    @id @db.Uuid
+  date_of_birth     DateTime? @db.Date
+  blood_group       String?
+  allergies         String?
+  emergency_contact String?
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model appointments {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id   String             @db.Uuid
+  doctor_id    String             @db.Uuid
+  scheduled_at DateTime           @db.Timestamptz(6)
+  status       appointment_status @default(requested)
+  reason       String?
+  notes        String?
+  created_at   DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime           @default(now()) @db.Timestamptz(6)
+
+  patient         users             @relation("AppointmentPatient", fields: [patient_id], references: [id], onDelete: Cascade)
+  doctor          users             @relation("AppointmentDoctor", fields: [doctor_id], references: [id], onDelete: Cascade)
+  payment         payments?
+  prescriptions   prescriptions[]
+  medical_reports medical_reports[]
+
+  @@index([patient_id], map: "idx_appt_patient")
+  @@index([doctor_id], map: "idx_appt_doctor")
+  @@index([status], map: "idx_appt_status")
+  @@index([scheduled_at], map: "idx_appt_scheduled")
+}
+
+model medical_reports {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id     String      @db.Uuid
+  doctor_id      String?     @db.Uuid
+  appointment_id String?     @db.Uuid
+  report_type    report_type @default(other)
+  title          String
+  file_url       String
+  file_hash      String
+  raw_text       String?
+  created_at     DateTime    @default(now()) @db.Timestamptz(6)
+
+  patient                 users                     @relation("ReportPatient", fields: [patient_id], references: [id], onDelete: Cascade)
+  doctor                  users?                    @relation("ReportDoctor", fields: [doctor_id], references: [id])
+  appointment             appointments?             @relation(fields: [appointment_id], references: [id])
+  ai_analyses             ai_analyses[]
+  blockchain_transactions blockchain_transactions[]
+
+  @@index([patient_id], map: "idx_reports_patient")
+  @@index([doctor_id], map: "idx_reports_doctor")
+  @@index([report_type], map: "idx_reports_type")
+}
+
+model ai_analyses {
+  id         String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id  String                 @db.Uuid
+  summary    String
+  findings   Json                   @default("{}")
+  embedding  Unsupported("vector")?
+  model_used String
+  confidence Decimal?               @db.Decimal(4, 3)
+  created_at DateTime               @default(now()) @db.Timestamptz(6)
+
+  report medical_reports @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@index([report_id], map: "idx_ai_report")
+}
+
+model prescriptions {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointment_id String?  @db.Uuid
+  patient_id     String   @db.Uuid
+  doctor_id      String   @db.Uuid
+  notes          String?
+  issued_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  appointment             appointments?             @relation(fields: [appointment_id], references: [id])
+  patient                 users                     @relation("PrescriptionPatient", fields: [patient_id], references: [id], onDelete: Cascade)
+  doctor                  users                     @relation("PrescriptionDoctor", fields: [doctor_id], references: [id], onDelete: Cascade)
+  items                   prescription_items[]
+  blockchain_transactions blockchain_transactions[]
+
+  @@index([patient_id], map: "idx_presc_patient")
+  @@index([doctor_id], map: "idx_presc_doctor")
+}
+
+model prescription_items {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prescription_id String @db.Uuid
+  line_no         Int    @db.SmallInt
+  medicine_name   String
+  dosage          String
+  frequency       String
+  duration_days   Int
+
+  prescription prescriptions @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+
+  @@unique([prescription_id, line_no], map: "uq_prescription_line")
+}
+
+model blockchain_transactions {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id       String?   @db.Uuid
+  prescription_id String?   @db.Uuid
+  chain           String    @default("sepolia")
+  tx_hash         String    @unique
+  block_number    BigInt?
+  data_hash       String
+  status          tx_status @default(pending)
+  gas_used        Decimal?  @db.Decimal(20, 0)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  confirmed_at    DateTime? @db.Timestamptz(6)
+
+  report       medical_reports? @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  prescription prescriptions?   @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+
+  @@index([report_id], map: "idx_btx_report")
+  @@index([prescription_id], map: "idx_btx_prescription")
+  @@index([status], map: "idx_btx_status")
+}
+
+model payments {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointment_id String         @unique @db.Uuid
+  amount         Decimal        @db.Decimal(10, 2)
+  currency       String         @default("INR") @db.Char(3)
+  method         payment_method
+  provider       String         @default("simulated")
+  provider_ref   String         @unique
+  status         payment_status @default(paid)
+  paid_at        DateTime       @default(now()) @db.Timestamptz(6)
+  refunded_at    DateTime?      @db.Timestamptz(6)
+
+  appointment appointments @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+
+  @@index([status], map: "idx_payments_status")
+}
+
+model audit_logs {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String
+  entity_type String
+  entity_id   String   @db.Uuid
+  metadata    Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  user users? @relation(fields: [user_id], references: [id])
+
+  @@index([entity_type, entity_id], map: "idx_audit_entity")
+  @@index([user_id], map: "idx_audit_user")
+  @@index([created_at], map: "idx_audit_created")
+}
+
+model notifications {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String            @db.Uuid
+  type       notification_type
+  message    String
+  is_read    Boolean           @default(false)
+  created_at DateTime          @default(now()) @db.Timestamptz(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_read], map: "idx_notif_user")
+}

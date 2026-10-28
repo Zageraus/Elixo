@@ -1,40 +1,60 @@
-
-import { Router } from "express";
+import { Router, Request } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { supabaseAdmin, supabaseForRequest } from "../config/supabase.js";
+import { prisma, withAuditUser } from "../config/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { hashPrescription, anchorHashOnChain, checkOnChain } from "../services/blockchain.service.js";
+import { paginated, parsePage } from "../utils/pagination.js";
 
 const router = Router();
 router.use(requireAuth);
 
+/** Same rule as the old RLS policy: the patient, the prescribing doctor, or an admin. */
+function visibleTo(req: Request): Prisma.prescriptionsWhereInput {
+  if (req.auth!.app_role === "admin") return {};
+  const me = req.auth!.app_user_id;
+  return { OR: [{ patient_id: me }, { doctor_id: me }] };
+}
+
+const PRESCRIPTION_INCLUDE = {
+  items: { orderBy: { line_no: "asc" } },
+  patient: { select: { full_name: true } },
+  doctor: { select: { full_name: true } },
+  blockchain_transactions: { select: { tx_hash: true, status: true, block_number: true, chain: true } },
+} satisfies Prisma.prescriptionsInclude;
+
+type PrescriptionWithItems = Prisma.prescriptionsGetPayload<{ include: typeof PRESCRIPTION_INCLUDE }>;
+
+/** Medicines in their original order, in the shape the frontend and hash use. */
+const medicationsOf = (items: { medicine_name: string; dosage: string; frequency: string; duration_days: number }[]) =>
+  items.map((i) => ({ name: i.medicine_name, dosage: i.dosage, frequency: i.frequency, duration_days: i.duration_days }));
+
+function toResponse({ items, patient, doctor, ...p }: PrescriptionWithItems) {
+  return {
+    ...p,
+    medications: medicationsOf(items),
+    patient_name: patient.full_name,
+    doctor_name: doctor.full_name,
+  };
+}
+
+// GET /api/prescriptions?page=&page_size=  -> newest first, paginated
 router.get("/", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
+  const page = parsePage(req);
+  const where = visibleTo(req);
 
-  const { data, error } = await db
-    .from("prescriptions")
-    .select("*, blockchain_transactions(tx_hash, status, block_number, chain)")
-    .order("issued_at", { ascending: false });
+  const [rows, total] = await Promise.all([
+    prisma.prescriptions.findMany({
+      where,
+      include: PRESCRIPTION_INCLUDE,
+      orderBy: { issued_at: "desc" },
+      skip: page.skip,
+      take: page.take,
+    }),
+    prisma.prescriptions.count({ where }),
+  ]);
 
-  if (error) return res.status(500).json({ error: error.message });
-
-  // Look names up with the admin client: users RLS hides other people's rows.
-  const ids = [...new Set(data.flatMap((p) => [p.patient_id, p.doctor_id]))];
-  const { data: people, error: peopleError } = await supabaseAdmin
-    .from("users")
-    .select("id, full_name")
-    .in("id", ids);
-
-  if (peopleError) return res.status(500).json({ error: peopleError.message });
-
-  const names = new Map(people.map((u) => [u.id, u.full_name]));
-  res.json(
-    data.map((p) => ({
-      ...p,
-      patient_name: names.get(p.patient_id) ?? null,
-      doctor_name: names.get(p.doctor_id) ?? null,
-    }))
-  );
+  res.json(paginated(rows.map(toResponse), total, page));
 });
 
 /**
@@ -46,20 +66,18 @@ router.get("/:id/verify", async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: "Invalid prescription ID." });
 
-  // RLS-scoped: only the patient, prescribing doctor or an admin gets a row.
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data: rx, error } = await db
-    .from("prescriptions")
-    .select("id, medications, blockchain_transactions(data_hash, status)")
-    .eq("id", id.data)
-    .maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
+  const rx = await prisma.prescriptions.findFirst({
+    where: { id: id.data, ...visibleTo(req) },
+    select: {
+      id: true,
+      items: { orderBy: { line_no: "asc" } },
+      blockchain_transactions: { select: { data_hash: true, status: true } },
+    },
+  });
   if (!rx) return res.status(404).json({ error: "Not found or not authorized" });
 
-  const computedHash = hashPrescription(rx.medications);
-  const confirmed = (rx.blockchain_transactions as { data_hash: string; status: string }[]).find(
-    (t) => t.status === "confirmed"
-  );
+  const computedHash = hashPrescription(medicationsOf(rx.items));
+  const confirmed = rx.blockchain_transactions.find((t) => t.status === "confirmed");
 
   res.json({
     recorded_hash: confirmed?.data_hash ?? null,
@@ -69,40 +87,44 @@ router.get("/:id/verify", async (req, res) => {
 });
 
 const medicationSchema = z.object({
-  name: z.string(),
-  dosage: z.string(),
-  frequency: z.string(),
-  duration_days: z.number().int().positive(),
+  name: z.string().trim().min(1).max(200),
+  dosage: z.string().trim().min(1).max(100),
+  frequency: z.string().trim().min(1).max(200),
+  duration_days: z.number().int().positive().max(3650),
 });
 
+/**
+ * POST /api/prescriptions
+ * Calls the stored procedure sp_create_prescription (migration 012), which
+ * inserts the prescription and all its items. It runs inside a Prisma
+ * transaction, so if any item is rejected nothing is saved.
+ */
 router.post("/", requireRole("doctor", "admin"), async (req, res) => {
   const schema = z.object({
     appointment_id: z.string().uuid().optional(),
     patient_id: z.string().uuid(),
-    medications: z.array(medicationSchema).min(1),
-    notes: z.string().optional(),
+    medications: z.array(medicationSchema).min(1).max(30),
+    notes: z.string().max(2000).optional(),
   });
 
   const parsed = schema.safeParse(req.body);
-
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const db = supabaseForRequest(req.rawJwt!);
+  const me = req.auth!.app_user_id;
+  const { patient_id, appointment_id, medications, notes } = parsed.data;
 
-  const { data: prescription, error } = await db
-    .from("prescriptions")
-    .insert({
-      ...parsed.data,
-      doctor_id: req.auth!.app_user_id,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
+  const prescription = await withAuditUser(me, async (tx) => {
+    const [created] = await tx.$queryRaw<{ p_prescription_id: string }[]>`
+      call sp_create_prescription(
+        ${me}::uuid, ${patient_id}::uuid, ${appointment_id ?? null}::uuid,
+        ${notes ?? null}, ${JSON.stringify(medications)}::jsonb, null)`;
+    return tx.prescriptions.findUniqueOrThrow({
+      where: { id: created.p_prescription_id },
+      include: PRESCRIPTION_INCLUDE,
+    });
+  });
 
   // Blockchain anchoring is optional.
   let blockchain: {
@@ -113,12 +135,10 @@ router.post("/", requireRole("doctor", "admin"), async (req, res) => {
   };
 
   if (process.env.BLOCKCHAIN_ENABLED === "true") {
-    const contentHash = hashPrescription(parsed.data.medications);
-
     try {
       blockchain = await anchorHashOnChain({
         recordId: prescription.id,
-        fileHashHex: contentHash,
+        fileHashHex: hashPrescription(medicationsOf(prescription.items)),
         recordType: "prescription",
       });
     } catch (e: unknown) {
@@ -130,7 +150,7 @@ router.post("/", requireRole("doctor", "admin"), async (req, res) => {
     blockchain = { status: "disabled" };
   }
 
-  return res.status(201).json({ prescription, blockchain });
+  return res.status(201).json({ prescription: toResponse(prescription), blockchain });
 });
 
 export default router;

@@ -1,37 +1,37 @@
 import { Router } from "express";
 import { z } from "zod";
-import { supabaseForRequest } from "../config/supabase.js";
+import { prisma } from "../config/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 
-// Uses the RLS-scoped client: p_notifications_owner limits every query to
-// the signed-in user's own notifications.
+// Every query is limited to the signed-in user's own notifications.
 const router = Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db
-    .from("notifications")
-    .select("id, type, message, is_read, created_at")
-    .order("created_at", { ascending: false })
-    .limit(50);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const items = await prisma.notifications.findMany({
+    where: { user_id: req.auth!.app_user_id },
+    select: { id: true, type: true, message: true, is_read: true, created_at: true },
+    orderBy: { created_at: "desc" },
+    take: 50,
+  });
+  res.json(items);
 });
 
 router.patch("/read-all", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { error } = await db.from("notifications").update({ is_read: true }).eq("is_read", false);
-  if (error) return res.status(500).json({ error: error.message });
+  await prisma.notifications.updateMany({
+    where: { user_id: req.auth!.app_user_id, is_read: false },
+    data: { is_read: true },
+  });
   res.json({ ok: true });
 });
 
 router.patch("/:id/read", async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: "Invalid notification ID." });
-  const db = supabaseForRequest(req.rawJwt!);
-  const { error } = await db.from("notifications").update({ is_read: true }).eq("id", id.data);
-  if (error) return res.status(500).json({ error: error.message });
+  await prisma.notifications.updateMany({
+    where: { id: id.data, user_id: req.auth!.app_user_id },
+    data: { is_read: true },
+  });
   res.json({ ok: true });
 });
 

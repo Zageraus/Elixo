@@ -1,44 +1,63 @@
 import { Router, Request, Response } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { supabaseAdmin, supabaseForRequest } from "../config/supabase.js";
+import { prisma, withAuditUser } from "../config/prisma.js";
+import { supabaseAdmin } from "../config/supabase.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { paginated, parsePage } from "../utils/pagination.js";
 
 const router = Router();
 router.use(requireAuth, requireRole("admin"));
 
-router.get("/analytics", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db.from("v_admin_analytics").select("*").single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+// Aggregate queries live in the v_admin_analytics view (counts, sums,
+// averages). COUNT returns BIGINT and SUM/AVG return NUMERIC, so convert
+// every value to a plain number for the API.
+router.get("/analytics", async (_req, res) => {
+  const [row] = await prisma.$queryRaw<Record<string, unknown>[]>`select * from v_admin_analytics`;
+  res.json(Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v === null ? null : Number(v)])));
 });
 
-router.get("/doctor-load", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db.from("v_doctor_weekly_load").select("*").order("week_start", { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+// Weekly appointments per doctor (GROUP BY view), joined to doctor names.
+router.get("/doctor-load", async (_req, res) => {
+  const rows = await prisma.$queryRaw<
+    { doctor_id: string; doctor_name: string; week_start: Date; appointment_count: bigint; completed_count: bigint; cancelled_count: bigint }[]
+  >`
+    select l.doctor_id, u.full_name as doctor_name, l.week_start,
+           l.appointment_count, l.completed_count, l.cancelled_count
+    from v_doctor_weekly_load l
+    join users u on u.id = l.doctor_id
+    order by l.week_start desc, u.full_name`;
+  res.json(rows);
 });
 
 router.get("/audit-logs", async (req, res) => {
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const page = parsePage(req);
+  const [rows, total] = await Promise.all([
+    prisma.audit_logs.findMany({
+      orderBy: { created_at: "desc" },
+      include: { user: { select: { full_name: true } } },
+      skip: page.skip,
+      take: page.take,
+    }),
+    prisma.audit_logs.count(),
+  ]);
+  res.json(paginated(rows, total, page));
 });
 
 router.patch("/users/:id/role", async (req, res) => {
-  const { role } = req.body;
-  if (!["patient", "doctor", "admin"].includes(role)) return res.status(400).json({ error: "Invalid role" });
-  const db = supabaseForRequest(req.rawJwt!);
-  const { data, error } = await db.from("users").update({ role }).eq("id", req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const id = z.string().uuid().safeParse(req.params.id);
+  const body = z.object({ role: z.enum(["patient", "doctor", "admin"]) }).safeParse(req.body);
+  if (!id.success || !body.success) return res.status(400).json({ error: "Invalid user ID or role" });
+
+  // trg_audit_users_role records the change with this admin as the actor.
+  const user = await withAuditUser(req.auth!.app_user_id, (tx) =>
+    tx.users.update({ where: { id: id.data }, data: { role: body.data.role } })
+  );
+  res.json(user);
 });
 
 /**
  * USER MANAGEMENT (patients and doctors only; admins can't be dropped here).
- * Uses the admin client: these actions span other users' rows.
  */
 
 const userIdSchema = z.string().uuid();
@@ -50,15 +69,10 @@ async function findManageableUser(req: Request, res: Response) {
     res.status(400).json({ error: "Invalid user ID." });
     return null;
   }
-  const { data: user, error } = await supabaseAdmin
-    .from("users")
-    .select("id, full_name, email, role, is_active")
-    .eq("id", parsedId.data)
-    .maybeSingle();
-  if (error) {
-    res.status(500).json({ error: error.message });
-    return null;
-  }
+  const user = await prisma.users.findUnique({
+    where: { id: parsedId.data },
+    select: { id: true, full_name: true, email: true, role: true, is_active: true },
+  });
   if (!user || (user.role !== "patient" && user.role !== "doctor")) {
     res.status(404).json({ error: "Patient or doctor not found." });
     return null;
@@ -66,33 +80,33 @@ async function findManageableUser(req: Request, res: Response) {
   return user;
 }
 
-const formatIST = (iso: string) =>
-  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+const formatIST = (d: Date) =>
+  d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
 /**
  * Sends one notification to every patient who has an appointment with this
  * doctor. Patients with upcoming visits are told those visits are cancelled
- * (and refunded if paid). Call it before cancelling or deleting anything.
+ * (and refunded if paid). Runs inside the caller's transaction, before
+ * anything is cancelled or deleted.
  */
 async function notifyDoctorPatients(
+  tx: Prisma.TransactionClient,
   doctor: { id: string; full_name: string },
   reason: "deactivated" | "deleted"
 ) {
-  const { data: appts, error } = await supabaseAdmin
-    .from("appointments")
-    .select("id, patient_id, scheduled_at, status, payments(status)")
-    .eq("doctor_id", doctor.id)
-    .order("scheduled_at");
-  if (error) throw error;
+  const appts = await tx.appointments.findMany({
+    where: { doctor_id: doctor.id },
+    select: { patient_id: true, scheduled_at: true, status: true, payment: { select: { status: true } } },
+    orderBy: { scheduled_at: "asc" },
+  });
 
   const now = Date.now();
   const byPatient = new Map<string, { upcoming: string[]; paid: boolean }>();
-  for (const a of appts as any[]) {
+  for (const a of appts) {
     const entry = byPatient.get(a.patient_id) ?? { upcoming: [], paid: false };
-    if ((a.status === "requested" || a.status === "confirmed") && new Date(a.scheduled_at).getTime() >= now) {
+    if ((a.status === "requested" || a.status === "confirmed") && a.scheduled_at.getTime() >= now) {
       entry.upcoming.push(formatIST(a.scheduled_at));
-      const payments = Array.isArray(a.payments) ? a.payments : a.payments ? [a.payments] : [];
-      if (payments.some((p: any) => p.status === "paid")) entry.paid = true;
+      if (a.payment?.status === "paid") entry.paid = true;
     }
     byPatient.set(a.patient_id, entry);
   }
@@ -113,57 +127,100 @@ async function notifyDoctorPatients(
           upcoming.length > 1 ? "have" : "has"
         } been cancelled${paid ? " and your payment refunded" : ""}.`
       : "";
-    return { user_id: patient_id, type: "appointment", message: `${lead}${cancelled} ${next}` };
+    return { user_id: patient_id, type: "appointment" as const, message: `${lead}${cancelled} ${next}` };
   });
 
-  const { error: insertErr } = await supabaseAdmin.from("notifications").insert(rows);
-  if (insertErr) throw insertErr;
+  await tx.notifications.createMany({ data: rows });
   return rows.length;
 }
 
-const countBy = (rows: { [k: string]: string | null }[], ...keys: string[]) => {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    for (const key of keys) {
-      const id = row[key];
-      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-  }
-  return counts;
-};
+const usersQuerySchema = z.object({
+  role: z.enum(["patient", "doctor"]).default("patient"),
+  q: z.string().trim().max(100).optional(),
+  status: z.enum(["all", "active", "inactive"]).default("all"),
+});
 
-router.get("/users", async (_req, res) => {
-  const [users, profiles, appts, prescriptions, reports, payments] = await Promise.all([
-    supabaseAdmin
-      .from("users")
-      .select("id, full_name, email, role, is_active, created_at")
-      .in("role", ["patient", "doctor"])
-      .order("full_name"),
-    supabaseAdmin.from("doctor_profiles").select("user_id, specialization"),
-    supabaseAdmin.from("appointments").select("patient_id, doctor_id"),
-    supabaseAdmin.from("prescriptions").select("patient_id, doctor_id"),
-    supabaseAdmin.from("medical_reports").select("patient_id"),
-    supabaseAdmin.from("payments").select("patient_id, doctor_id"),
+/**
+ * GET /api/admin/users?role=patient|doctor&q=&status=all|active|inactive&page=&page_size=
+ * Server-side search (name, email, specialization), filtering and
+ * pagination. Also returns how many patients and doctors match the search,
+ * for the tab labels.
+ */
+router.get("/users", async (req, res) => {
+  const query = usersQuerySchema.safeParse(req.query);
+  if (!query.success) return res.status(400).json({ error: query.error.flatten() });
+  const { role, q, status } = query.data;
+  const page = parsePage(req);
+
+  const search: Prisma.usersWhereInput = q
+    ? {
+        OR: [
+          { full_name: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+          { doctor_profile: { specialization: { contains: q, mode: "insensitive" } } },
+        ],
+      }
+    : {};
+  const statusFilter: Prisma.usersWhereInput =
+    status === "all" ? {} : { is_active: status === "active" };
+  const where: Prisma.usersWhereInput = { role, ...search, ...statusFilter };
+
+  const [users, total, patientTotal, doctorTotal] = await Promise.all([
+    prisma.users.findMany({
+      where,
+      select: {
+        id: true,
+        full_name: true,
+        email: true,
+        role: true,
+        is_active: true,
+        created_at: true,
+        doctor_profile: { select: { specialization: true } },
+        _count: {
+          select: {
+            appointments_as_patient: true,
+            appointments_as_doctor: true,
+            prescriptions_as_patient: true,
+            prescriptions_as_doctor: true,
+            reports_as_patient: true,
+          },
+        },
+      },
+      orderBy: { full_name: "asc" },
+      skip: page.skip,
+      take: page.take,
+    }),
+    prisma.users.count({ where }),
+    prisma.users.count({ where: { role: "patient", ...search, ...statusFilter } }),
+    prisma.users.count({ where: { role: "doctor", ...search, ...statusFilter } }),
   ]);
-  const failed = [users, profiles, appts, prescriptions, reports, payments].find((r) => r.error);
-  if (failed?.error) return res.status(500).json({ error: failed.error.message });
 
-  const specialization = new Map(profiles.data!.map((p) => [p.user_id, p.specialization]));
-  const apptCounts = countBy(appts.data!, "patient_id", "doctor_id");
-  const prescriptionCounts = countBy(prescriptions.data!, "patient_id", "doctor_id");
-  const reportCounts = countBy(reports.data!, "patient_id");
-  const paymentCounts = countBy(payments.data!, "patient_id", "doctor_id");
+  // Paid or refunded payments on each listed user's appointments.
+  const ids = users.map((u) => u.id);
+  const paidAppts = await prisma.appointments.findMany({
+    where: { payment: { isNot: null }, OR: [{ patient_id: { in: ids } }, { doctor_id: { in: ids } }] },
+    select: { patient_id: true, doctor_id: true },
+  });
+  const paymentCount = new Map<string, number>();
+  for (const a of paidAppts) {
+    for (const id of [a.patient_id, a.doctor_id]) paymentCount.set(id, (paymentCount.get(id) ?? 0) + 1);
+  }
 
-  res.json(
-    users.data!.map((u) => ({
-      ...u,
-      specialization: specialization.get(u.id) ?? null,
-      appointment_count: apptCounts.get(u.id) ?? 0,
-      prescription_count: prescriptionCounts.get(u.id) ?? 0,
-      report_count: reportCounts.get(u.id) ?? 0,
-      payment_count: paymentCounts.get(u.id) ?? 0,
-    }))
-  );
+  res.json({
+    ...paginated(
+      users.map(({ doctor_profile, _count, ...u }) => ({
+        ...u,
+        specialization: doctor_profile?.specialization ?? null,
+        appointment_count: _count.appointments_as_patient + _count.appointments_as_doctor,
+        prescription_count: _count.prescriptions_as_patient + _count.prescriptions_as_doctor,
+        report_count: _count.reports_as_patient,
+        payment_count: paymentCount.get(u.id) ?? 0,
+      })),
+      total,
+      page
+    ),
+    role_totals: { patient: patientTotal, doctor: doctorTotal },
+  });
 });
 
 /**
@@ -171,6 +228,9 @@ router.get("/users", async (_req, res) => {
  * request), hides a doctor from booking, and cancels the user's upcoming
  * requested/confirmed appointments (paid ones are refunded by the
  * trg_refund_on_cancel trigger). Records are kept.
+ *
+ * Notifying patients, updating the account and cancelling appointments is
+ * one transaction: if any step fails, nothing changes.
  */
 router.patch("/users/:id/active", async (req, res) => {
   const parsed = z.object({ is_active: z.boolean() }).safeParse(req.body);
@@ -179,38 +239,35 @@ router.patch("/users/:id/active", async (req, res) => {
   const user = await findManageableUser(req, res);
   if (!user) return;
 
-  // Tell the doctor's patients before their appointments are cancelled.
-  let patientsNotified = 0;
-  if (user.role === "doctor" && user.is_active && !parsed.data.is_active) {
-    try {
-      patientsNotified = await notifyDoctorPatients(user, "deactivated");
-    } catch (e: any) {
-      return res.status(500).json({ error: `Could not notify patients: ${e.message}` });
+  const result = await withAuditUser(req.auth!.app_user_id, async (tx) => {
+    // Tell the doctor's patients before their appointments are cancelled.
+    const patientsNotified =
+      user.role === "doctor" && user.is_active && !parsed.data.is_active
+        ? await notifyDoctorPatients(tx, user, "deactivated")
+        : 0;
+
+    await tx.users.update({ where: { id: user.id }, data: { is_active: parsed.data.is_active } });
+
+    let cancelled = 0;
+    if (!parsed.data.is_active) {
+      const { count } = await tx.appointments.updateMany({
+        where: {
+          ...(user.role === "doctor" ? { doctor_id: user.id } : { patient_id: user.id }),
+          status: { in: ["requested", "confirmed"] },
+          scheduled_at: { gte: new Date() },
+        },
+        data: { status: "cancelled", notes: "Cancelled automatically: account deactivated by admin." },
+      });
+      cancelled = count;
     }
-  }
-
-  const { error } = await supabaseAdmin.from("users").update({ is_active: parsed.data.is_active }).eq("id", user.id);
-  if (error) return res.status(500).json({ error: error.message });
-
-  let cancelled = 0;
-  if (!parsed.data.is_active) {
-    const column = user.role === "doctor" ? "doctor_id" : "patient_id";
-    const { data, error: cancelErr } = await supabaseAdmin
-      .from("appointments")
-      .update({ status: "cancelled", notes: "Cancelled automatically: account deactivated by admin." })
-      .eq(column, user.id)
-      .in("status", ["requested", "confirmed"])
-      .gte("scheduled_at", new Date().toISOString())
-      .select("id");
-    if (cancelErr) return res.status(500).json({ error: cancelErr.message });
-    cancelled = data.length;
-  }
+    return { patientsNotified, cancelled };
+  });
 
   res.json({
     id: user.id,
     is_active: parsed.data.is_active,
-    cancelled_appointments: cancelled,
-    patients_notified: patientsNotified,
+    cancelled_appointments: result.cancelled,
+    patients_notified: result.patientsNotified,
   });
 });
 
@@ -224,16 +281,16 @@ router.delete("/users/:id", async (req, res) => {
   const user = await findManageableUser(req, res);
   if (!user) return;
 
-  // Notifications belong to the patients, so they survive the cascade below.
-  let patientsNotified = 0;
-  if (user.role === "doctor") {
-    try {
-      patientsNotified = await notifyDoctorPatients(user, "deleted");
-    } catch (e: any) {
-      return res.status(500).json({ error: `Could not notify patients: ${e.message}` });
-    }
-  }
+  // Notifications go to the patients, so they survive the cascade. Both
+  // steps commit together.
+  const patientsNotified = await withAuditUser(req.auth!.app_user_id, async (tx) => {
+    const notified = user.role === "doctor" ? await notifyDoctorPatients(tx, user, "deleted") : 0;
+    await tx.users.delete({ where: { id: user.id } });
+    return notified;
+  });
 
+  // Files and the Auth login live outside the database; clean them up after
+  // the rows are gone.
   if (user.role === "patient") {
     const folder = `reports/${user.id}`;
     const { data: files } = await supabaseAdmin.storage.from("medical-reports").list(folder);
@@ -242,10 +299,6 @@ router.delete("/users/:id", async (req, res) => {
     }
   }
 
-  const { error } = await supabaseAdmin.from("users").delete().eq("id", user.id);
-  if (error) return res.status(500).json({ error: error.message });
-
-  // Remove the matching Auth login (if any) so the email can't sign back in.
   if (user.email) {
     const email = user.email.toLowerCase();
     for (let page = 1; ; page++) {
