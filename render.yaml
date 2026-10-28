@@ -1,0 +1,32 @@
+# Render Blueprint for the backend API (Render dashboard -> New -> Blueprint).
+# The frontend deploys to Vercel and the database is Supabase Postgres.
+# Secret values are entered in the Render dashboard, never committed here.
+services:
+  - type: web
+    name: elixor-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: ADMIN_REGISTRATION_KEY
+        sync: false
+      - key: BLOCKCHAIN_ENABLED
+        value: "false"

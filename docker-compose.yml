@@ -1,0 +1,32 @@
+# Runs the backend and frontend in containers. The database is the managed
+# Supabase Postgres set in backend/.env (DATABASE_URL, SUPABASE_*).
+#
+#   docker compose up --build
+#   frontend -> http://localhost:3000, backend -> http://localhost:4000/health
+services:
+  backend:
+    build: ./backend
+    image: ${DOCKERHUB_USER:-elixor}/elixor-backend:latest
+    env_file: ./backend/.env
+    environment:
+      PORT: 4000
+      FRONTEND_ORIGIN: http://localhost:3000
+      # Ollama / a local Hardhat chain on the host machine, if used.
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    image: ${DOCKERHUB_USER:-elixor}/elixor-frontend:latest
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

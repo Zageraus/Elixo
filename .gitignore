@@ -17,6 +17,15 @@ typechain-types/
 **/.env
 **/.env.*
 !**/.env.example
+# Env files saved with a space instead of a dot (e.g. ".env local")
+**/.env *
+
+# Database backups (contain real data)
+backups/
+*.dump
 
 # Local-only notes such as demo login passwords
 *.local.md
+
+# TypeScript incremental build info
+*.tsbuildinfo
