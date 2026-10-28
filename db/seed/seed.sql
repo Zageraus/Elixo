@@ -33,10 +33,12 @@ insert into ai_analyses (report_id, summary, findings, model_used, confidence) v
      '{"flags": ["elevated_ldl", "elevated_triglycerides"], "severity": "moderate", "recommendation": "Dietary review, recheck in 3 months"}',
      'gpt-4o-mini-rag-v1', 0.870);
 
-insert into prescriptions (appointment_id, patient_id, doctor_id, medications, notes) values
-    ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333',
-     '22222222-2222-2222-2222-222222222222',
-     '[{"name": "Atorvastatin", "dosage": "10mg", "frequency": "once daily", "duration_days": 90}]',
+insert into prescriptions (id, appointment_id, patient_id, doctor_id, notes) values
+    ('77777777-7777-7777-7777-777777777777', '55555555-5555-5555-5555-555555555555',
+     '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222',
      'Recheck lipid panel in 3 months; low-cholesterol diet advised.');
+
+insert into prescription_items (prescription_id, line_no, medicine_name, dosage, frequency, duration_days) values
+    ('77777777-7777-7777-7777-777777777777', 1, 'Atorvastatin', '10mg', 'once daily', 90);
 
 -- (No blockchain_transactions are seeded: real anchors come from the backend.)

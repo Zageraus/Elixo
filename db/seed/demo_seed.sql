@@ -113,11 +113,10 @@ join users p on p.email = v.patient_email
 join users d on d.email = v.doctor_email;
 
 -- ---------------------------------------------------------------------
--- Prescriptions for completed visits (issued 30 min after the visit)
+-- Prescriptions for completed visits (issued 30 min after the visit).
+-- Each medicine becomes one prescription_items row (migration 012).
 -- ---------------------------------------------------------------------
-insert into prescriptions (appointment_id, patient_id, doctor_id, medications, notes, issued_at)
-select a.id, a.patient_id, a.doctor_id, v.meds::jsonb, v.notes, a.scheduled_at + interval '30 minutes'
-from (values
+with v(patient_email, doctor_email, at, meds, notes) as (values
     ('karthik.s@healthchain.dev', 'vikram.singh@healthchain.dev', '2026-09-29 10:00+05:30',
      '[{"name":"Metformin","dosage":"500mg","frequency":"twice daily after meals","duration_days":90},{"name":"Glimepiride","dosage":"1mg","frequency":"once daily before breakfast","duration_days":90}]',
      'Continue diet plan; repeat HbA1c in 3 months.'),
@@ -142,10 +141,25 @@ from (values
     ('sneha.kulkarni@healthchain.dev', 'vikram.singh@healthchain.dev', '2026-10-21 10:00+05:30',
      '[{"name":"Levothyroxine","dosage":"50mcg","frequency":"once daily on an empty stomach","duration_days":90}]',
      'Recheck TSH in 6 weeks.')
-) v(patient_email, doctor_email, at, meds, notes)
-join users p on p.email = v.patient_email
-join users d on d.email = v.doctor_email
-join appointments a on a.patient_id = p.id and a.doctor_id = d.id and a.scheduled_at = v.at::timestamptz;
+),
+visit as (
+    select a.id as appointment_id, a.patient_id, a.doctor_id, a.scheduled_at, v.meds, v.notes
+    from v
+    join users p on p.email = v.patient_email
+    join users d on d.email = v.doctor_email
+    join appointments a on a.patient_id = p.id and a.doctor_id = d.id and a.scheduled_at = v.at::timestamptz
+),
+rx as (
+    insert into prescriptions (appointment_id, patient_id, doctor_id, notes, issued_at)
+    select appointment_id, patient_id, doctor_id, notes, scheduled_at + interval '30 minutes'
+    from visit
+    returning id, appointment_id
+)
+insert into prescription_items (prescription_id, line_no, medicine_name, dosage, frequency, duration_days)
+select rx.id, m.ord::smallint, m.item->>'name', m.item->>'dosage', m.item->>'frequency', (m.item->>'duration_days')::integer
+from rx
+join visit on visit.appointment_id = rx.appointment_id
+cross join lateral jsonb_array_elements(visit.meds::jsonb) with ordinality as m(item, ord);
 
 -- ---------------------------------------------------------------------
 -- Reports + AI summaries

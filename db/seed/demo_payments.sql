@@ -14,8 +14,10 @@ if exists (select 1 from payments) then
     return;
 end if;
 
-insert into payments (appointment_id, patient_id, doctor_id, amount, method, provider_ref, paid_at)
-select a.id, a.patient_id, a.doctor_id, dp.consultation_fee,
+-- payments no longer stores patient_id / doctor_id (migration 012): they
+-- come from the appointment.
+insert into payments (appointment_id, amount, method, provider_ref, paid_at)
+select a.id, dp.consultation_fee,
        (array['upi', 'card', 'netbanking']::payment_method[])[1 + (row_number() over (order by a.scheduled_at))::int % 3],
        'SIM-' || upper(substr(md5(a.id::text), 1, 10)),
        a.scheduled_at - interval '1 day'

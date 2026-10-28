@@ -661,52 +661,6 @@ as $$
 $$;
 
 
--- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
--- FILE: seed.sql
--- <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
--- =====================================================================
--- HealthChain: Demo seed data
--- Run after migrations, only in dev/test environments.
--- =====================================================================
-
-insert into users (id, wallet_address, role, full_name, email) values
-    ('11111111-1111-1111-1111-111111111111', '0x111111111111111111111111111111111111aaaa', 'admin',   'Alice Admin',  'admin@healthchain.dev'),
-    ('22222222-2222-2222-2222-222222222222', '0x222222222222222222222222222222222222bbbb', 'doctor',  'Dr. Bob Rao',  'bob@healthchain.dev'),
-    ('33333333-3333-3333-3333-333333333333', '0x333333333333333333333333333333333333cccc', 'patient', 'Chitra Menon', 'chitra@healthchain.dev'),
-    ('44444444-4444-4444-4444-444444444444', '0x444444444444444444444444444444444444dddd', 'patient', 'Dev Kumar',    'dev@healthchain.dev');
-
-insert into doctor_profiles (user_id, specialization, license_number, years_experience, consultation_fee) values
-    ('22222222-2222-2222-2222-222222222222', 'Cardiology', 'LIC-2024-0091', 12, 500.00);
-
-insert into patient_profiles (user_id, date_of_birth, blood_group, allergies) values
-    ('33333333-3333-3333-3333-333333333333', '1990-04-12', 'O+', 'Penicillin'),
-    ('44444444-4444-4444-4444-444444444444', '1985-11-02', 'B+', null);
-
-insert into appointments (id, patient_id, doctor_id, scheduled_at, status, reason) values
-    ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333',
-     '22222222-2222-2222-2222-222222222222', now() + interval '2 days', 'confirmed', 'Routine checkup');
-
-insert into medical_reports (id, patient_id, doctor_id, appointment_id, report_type, title, file_url, file_hash, raw_text) values
-    ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333333',
-     '22222222-2222-2222-2222-222222222222', '55555555-5555-5555-5555-555555555555',
-     'lab_result', 'Lipid Panel - Jan 2026', 'reports/chitra/lipid_panel_jan2026.pdf',
-     '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-     'LDL: 145 mg/dL, HDL: 42 mg/dL, Triglycerides: 180 mg/dL, Total Cholesterol: 220 mg/dL');
-
-insert into ai_analyses (report_id, summary, findings, model_used, confidence) values
-    ('66666666-6666-6666-6666-666666666666',
-     'Lipid panel shows borderline-high LDL and total cholesterol; triglycerides mildly elevated.',
-     '{"flags": ["elevated_ldl", "elevated_triglycerides"], "severity": "moderate", "recommendation": "Dietary review, recheck in 3 months"}',
-     'gpt-4o-mini-rag-v1', 0.870);
-
-insert into prescriptions (appointment_id, patient_id, doctor_id, medications, notes) values
-    ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333',
-     '22222222-2222-2222-2222-222222222222',
-     '[{"name": "Atorvastatin", "dosage": "10mg", "frequency": "once daily", "duration_days": 90}]',
-     'Recheck lipid panel in 3 months; low-cholesterol diet advised.');
-
--- (No blockchain_transactions are seeded: real anchors come from the backend.)
 
 
 -- Trigger functions run as their owner so RLS doesn't block the audit,
@@ -905,6 +859,207 @@ left join lateral (
 
 delete from blockchain_transactions
 where tx_hash = '0xabc123def4560000000000000000000000000000000000000000000000000001';
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- FILE: 012_normalize_and_procedures.sql
+-- <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+-- =====================================================================
+-- HealthChain: 3NF clean-up, stored procedure, search indexes
+-- (Migration 012)
+--
+-- * prescriptions.medications was a JSONB array (a repeating group, so not
+--   1NF). Each medicine is now a row in prescription_items, numbered by
+--   line_no so the prescription hash (anchored on-chain) is rebuilt in the
+--   same order as before.
+-- * payments.patient_id / doctor_id depended on appointment_id (which is
+--   NOT NULL and UNIQUE), a transitive dependency. They are dropped; the
+--   patient and doctor are read through the appointment.
+-- * prescriptions keeps patient_id / doctor_id because appointment_id is
+--   optional (a prescription can be issued without a visit). A trigger now
+--   makes sure they match the appointment whenever one is linked.
+-- * sp_create_prescription: stored procedure that writes a prescription
+--   and its items atomically.
+-- * pg_trgm indexes so the admin user search (ILIKE '%term%') can use an
+--   index, plus an index for paging notifications newest-first.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- PRESCRIPTION ITEMS
+-- ---------------------------------------------------------------------
+create table prescription_items (
+    id              uuid primary key default gen_random_uuid(),
+    prescription_id uuid not null references prescriptions(id) on delete cascade,
+    line_no         smallint not null check (line_no > 0),
+    medicine_name   text not null check (length(trim(medicine_name)) > 0),
+    dosage          text not null,
+    frequency       text not null,
+    duration_days   integer not null check (duration_days > 0),
+
+    constraint uq_prescription_line unique (prescription_id, line_no)
+);
+
+insert into prescription_items (prescription_id, line_no, medicine_name, dosage, frequency, duration_days)
+select p.id, m.ord::smallint, m.item->>'name', m.item->>'dosage', m.item->>'frequency', (m.item->>'duration_days')::integer
+from prescriptions p
+cross join lateral jsonb_array_elements(p.medications) with ordinality as m(item, ord);
+
+alter table prescriptions drop column medications;
+
+alter table prescription_items enable row level security;
+
+create policy p_prescription_items_select on prescription_items
+    for select using (
+        exists (
+            select 1 from prescriptions pr
+            where pr.id = prescription_items.prescription_id
+              and (pr.patient_id = fn_current_user_id()
+                   or pr.doctor_id = fn_current_user_id()
+                   or fn_current_user_role() = 'admin')
+        )
+    );
+
+-- ---------------------------------------------------------------------
+-- PAYMENTS: remove the transitively dependent columns
+-- ---------------------------------------------------------------------
+drop policy p_payments_select on payments;
+
+alter table payments
+    drop constraint chk_payment_roles,
+    drop column patient_id,
+    drop column doctor_id;
+
+create policy p_payments_select on payments
+    for select using (
+        fn_current_user_role() = 'admin'
+        or exists (
+            select 1 from appointments a
+            where a.id = payments.appointment_id
+              and (a.patient_id = fn_current_user_id() or a.doctor_id = fn_current_user_id())
+        )
+    );
+
+-- ---------------------------------------------------------------------
+-- PRESCRIPTIONS: linked appointment must agree on patient and doctor
+-- ---------------------------------------------------------------------
+create or replace function fn_check_prescription_appointment()
+returns trigger as $$
+begin
+    if new.appointment_id is not null and not exists (
+        select 1 from appointments a
+        where a.id = new.appointment_id
+          and a.patient_id = new.patient_id
+          and a.doctor_id = new.doctor_id
+    ) then
+        raise exception 'The linked appointment belongs to a different patient or doctor'
+            using errcode = '23514';
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_check_prescription_appointment
+    before insert or update on prescriptions
+    for each row execute function fn_check_prescription_appointment();
+
+-- ---------------------------------------------------------------------
+-- STORED PROCEDURE: create a prescription with its items in one unit
+-- p_items is a JSON array of {name, dosage, frequency, duration_days}.
+-- Everything runs in the caller's transaction, so a bad item rolls back
+-- the prescription header too.
+-- ---------------------------------------------------------------------
+create or replace procedure sp_create_prescription(
+    p_doctor_id         uuid,
+    p_patient_id        uuid,
+    p_appointment_id    uuid,
+    p_notes             text,
+    p_items             jsonb,
+    inout p_prescription_id uuid default null
+)
+language plpgsql
+as $$
+begin
+    if jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items) = 0 then
+        raise exception 'A prescription needs at least one medication' using errcode = '22023';
+    end if;
+
+    if not exists (select 1 from users where id = p_patient_id and role = 'patient' and is_active) then
+        raise exception 'Patient not found or inactive' using errcode = 'P0002';
+    end if;
+
+    insert into prescriptions (appointment_id, patient_id, doctor_id, notes)
+    values (p_appointment_id, p_patient_id, p_doctor_id, nullif(trim(p_notes), ''))
+    returning id into p_prescription_id;
+
+    insert into prescription_items (prescription_id, line_no, medicine_name, dosage, frequency, duration_days)
+    select p_prescription_id, t.ord::smallint, t.item->>'name', t.item->>'dosage', t.item->>'frequency',
+           (t.item->>'duration_days')::integer
+    from jsonb_array_elements(p_items) with ordinality as t(item, ord);
+end;
+$$;
+
+-- ---------------------------------------------------------------------
+-- INDEXES for search and paging
+-- ---------------------------------------------------------------------
+create extension if not exists pg_trgm;
+
+create index idx_users_full_name_trgm on users using gin (full_name gin_trgm_ops);
+create index idx_users_email_trgm on users using gin ((email::text) gin_trgm_ops);
+create index idx_notif_user_created on notifications(user_id, created_at desc);
+create index idx_presc_issued on prescriptions(issued_at desc);
+create index idx_reports_created on medical_reports(created_at desc);
+
+
+-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-- FILE: seed/seed.sql (base demo data, after every migration)
+-- <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+-- =====================================================================
+-- HealthChain: Demo seed data
+-- Run after migrations, only in dev/test environments.
+-- =====================================================================
+
+insert into users (id, wallet_address, role, full_name, email) values
+    ('11111111-1111-1111-1111-111111111111', '0x111111111111111111111111111111111111aaaa', 'admin',   'Alice Admin',  'admin@healthchain.dev'),
+    ('22222222-2222-2222-2222-222222222222', '0x222222222222222222222222222222222222bbbb', 'doctor',  'Dr. Bob Rao',  'bob@healthchain.dev'),
+    ('33333333-3333-3333-3333-333333333333', '0x333333333333333333333333333333333333cccc', 'patient', 'Chitra Menon', 'chitra@healthchain.dev'),
+    ('44444444-4444-4444-4444-444444444444', '0x444444444444444444444444444444444444dddd', 'patient', 'Dev Kumar',    'dev@healthchain.dev');
+
+insert into doctor_profiles (user_id, specialization, license_number, years_experience, consultation_fee) values
+    ('22222222-2222-2222-2222-222222222222', 'Cardiology', 'LIC-2024-0091', 12, 500.00);
+
+insert into patient_profiles (user_id, date_of_birth, blood_group, allergies) values
+    ('33333333-3333-3333-3333-333333333333', '1990-04-12', 'O+', 'Penicillin'),
+    ('44444444-4444-4444-4444-444444444444', '1985-11-02', 'B+', null);
+
+insert into appointments (id, patient_id, doctor_id, scheduled_at, status, reason) values
+    ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333',
+     '22222222-2222-2222-2222-222222222222', now() + interval '2 days', 'confirmed', 'Routine checkup');
+
+insert into medical_reports (id, patient_id, doctor_id, appointment_id, report_type, title, file_url, file_hash, raw_text) values
+    ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333333',
+     '22222222-2222-2222-2222-222222222222', '55555555-5555-5555-5555-555555555555',
+     'lab_result', 'Lipid Panel - Jan 2026', 'reports/chitra/lipid_panel_jan2026.pdf',
+     '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+     'LDL: 145 mg/dL, HDL: 42 mg/dL, Triglycerides: 180 mg/dL, Total Cholesterol: 220 mg/dL');
+
+insert into ai_analyses (report_id, summary, findings, model_used, confidence) values
+    ('66666666-6666-6666-6666-666666666666',
+     'Lipid panel shows borderline-high LDL and total cholesterol; triglycerides mildly elevated.',
+     '{"flags": ["elevated_ldl", "elevated_triglycerides"], "severity": "moderate", "recommendation": "Dietary review, recheck in 3 months"}',
+     'gpt-4o-mini-rag-v1', 0.870);
+
+insert into prescriptions (id, appointment_id, patient_id, doctor_id, notes) values
+    ('77777777-7777-7777-7777-777777777777', '55555555-5555-5555-5555-555555555555',
+     '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222',
+     'Recheck lipid panel in 3 months; low-cholesterol diet advised.');
+
+insert into prescription_items (prescription_id, line_no, medicine_name, dosage, frequency, duration_days) values
+    ('77777777-7777-7777-7777-777777777777', 1, 'Atorvastatin', '10mg', 'once daily', 90);
+
+-- (No blockchain_transactions are seeded: real anchors come from the backend.)
+
 
 -- Force reload schema cache for PostgREST
 NOTIFY pgrst, 'reload schema';
