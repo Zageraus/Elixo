@@ -1,8 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { api, getUser, MedicationItem, DoctorOption } from "../../lib/api";
+import {
+  api,
+  getUser,
+  MedicationItem,
+  DoctorOption,
+  PatientProfile,
+  BLOOD_GROUPS,
+  BloodGroup,
+  Paginated,
+} from "../../lib/api";
+import Pager from "../../components/Pager";
+import RoleGate from "../../components/RoleGate";
 import {
   formatINR,
   PAYMENT_METHOD_LABELS,
@@ -29,6 +39,19 @@ interface PrescriptionRecord {
     block_number?: number;
   }[];
 }
+
+const PAGE_SIZE = 5;
+
+type PageMeta = { page: number; total: number; total_pages: number };
+const FIRST_PAGE: PageMeta = { page: 1, total: 0, total_pages: 1 };
+const metaOf = (p: Paginated<unknown>): PageMeta => ({ page: p.page, total: p.total, total_pages: p.total_pages });
+
+const EMPTY_PROFILE: PatientProfile = {
+  date_of_birth: null,
+  blood_group: null,
+  allergies: null,
+  emergency_contact: null,
+};
 
 function SkeletonCard() {
   return (
@@ -63,11 +86,22 @@ function EmptyState({
   );
 }
 
-export default function PatientDashboard() {
+export default function PatientPage() {
+  return (
+    <RoleGate role="patient">
+      <PatientDashboard />
+    </RoleGate>
+  );
+}
+
+function PatientDashboard() {
   const [user, setUser] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
+  const [reportMeta, setReportMeta] = useState<PageMeta>(FIRST_PAGE);
+  const [prescriptionMeta, setPrescriptionMeta] = useState<PageMeta>(FIRST_PAGE);
+  const [pageLoading, setPageLoading] = useState<"reports" | "prescriptions" | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<{
@@ -90,31 +124,42 @@ export default function PatientDashboard() {
     type: "success" | "error";
     text: string;
   } | null>(null);
-  const router = useRouter();
+  const [profile, setProfile] = useState<PatientProfile>(EMPTY_PROFILE);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
-    const authed = getUser();
-    // The doctor-list and booking endpoints are patient-only, so send
-    // signed-out users to login and other roles to their own dashboard.
-    if (!authed) {
-      router.replace("/");
-      return;
-    }
-    if (authed.role !== "patient") {
-      router.replace(authed.role === "doctor" ? "/doctor" : "/admin");
-      return;
-    }
-    setUser(authed);
+    // RoleGate has already confirmed this is a signed-in patient.
+    setUser(getUser());
 
     Promise.allSettled([
       api.getAppointments(),
-      api.getReports(),
-      api.getPrescriptions(),
+      api.getReports(1, PAGE_SIZE),
+      api.getPrescriptions(1, PAGE_SIZE),
       api.getDoctors(),
-    ]).then(([appts, rpts, presc, docs]) => {
+      api.getMyProfile(),
+    ]).then(([appts, rpts, presc, docs, prof]) => {
+      if (prof.status === "fulfilled") setProfile(prof.value);
+      else {
+        setProfileMessage({
+          type: "error",
+          text: `Could not load your health profile: ${prof.reason?.message ?? "unknown error"}`,
+        });
+      }
+      setProfileLoading(false);
       if (appts.status === "fulfilled") setAppointments(appts.value);
-      if (rpts.status === "fulfilled") setReports(rpts.value);
-      if (presc.status === "fulfilled") setPrescriptions(presc.value);
+      if (rpts.status === "fulfilled") {
+        setReports(rpts.value.items);
+        setReportMeta(metaOf(rpts.value));
+      }
+      if (presc.status === "fulfilled") {
+        setPrescriptions(presc.value.items);
+        setPrescriptionMeta(metaOf(presc.value));
+      }
       if (docs.status === "fulfilled") setDoctors(docs.value);
       else {
         console.error("Could not load doctors:", docs.reason);
@@ -127,7 +172,7 @@ export default function PatientDashboard() {
       setLoading(false);
       setDoctorsLoading(false);
     });
-  }, [router]);
+  }, []);
 
   const handleBookAppointment = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -165,6 +210,70 @@ export default function PatientDashboard() {
       });
     } finally {
       setBooking(false);
+    }
+  };
+
+  const loadReportsPage = async (page: number) => {
+    setPageLoading("reports");
+    try {
+      const res = await api.getReports(page, PAGE_SIZE);
+      setReports(res.items);
+      setReportMeta(metaOf(res));
+    } catch (err: any) {
+      setUploadMessage({ type: "error", text: err?.message ?? "Could not load reports." });
+    } finally {
+      setPageLoading(null);
+    }
+  };
+
+  const loadPrescriptionsPage = async (page: number) => {
+    setPageLoading("prescriptions");
+    try {
+      const res = await api.getPrescriptions(page, PAGE_SIZE);
+      setPrescriptions(res.items);
+      setPrescriptionMeta(metaOf(res));
+    } catch (err: any) {
+      console.error("Could not load prescriptions:", err);
+    } finally {
+      setPageLoading(null);
+    }
+  };
+
+  const updateProfileField =<K extends keyof PatientProfile>(key: K, value: PatientProfile[K]) => {
+    setProfile((prev) => ({ ...prev, [key]: value }));
+    setProfileMessage(null);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setProfileMessage(null);
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (profile.date_of_birth && profile.date_of_birth > today) {
+      setProfileMessage({ type: "error", text: "Date of birth can't be in the future." });
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const saved = await api.updateMyProfile({
+        date_of_birth: profile.date_of_birth || null,
+        blood_group: profile.blood_group || null,
+        allergies: profile.allergies?.trim() || null,
+        emergency_contact: profile.emergency_contact?.trim() || null,
+      });
+      setProfile(saved);
+      setProfileMessage({
+        type: "success",
+        text: "Health profile saved. Your doctors will see your allergies on your appointments.",
+      });
+    } catch (err: any) {
+      setProfileMessage({
+        type: "error",
+        text: err?.message ?? "Could not save your health profile. Please try again.",
+      });
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -232,8 +341,9 @@ export default function PatientDashboard() {
     const form = new FormData(formEl);
     try {
       const result = await api.uploadReport(form);
-      const updatedReports = await api.getReports();
-      setReports(updatedReports);
+      const updatedReports = await api.getReports(1, PAGE_SIZE);
+      setReports(updatedReports.items);
+      setReportMeta(metaOf(updatedReports));
 
       // Describe each step as it actually went: the file is saved either
       // way, but AI and anchoring can be skipped, off, or fail on their own.
@@ -291,7 +401,7 @@ export default function PatientDashboard() {
     },
     {
       label: "Prescriptions",
-      value: prescriptions.length,
+      value: prescriptionMeta.total,
       sub: "Active medications",
       icon: "💊",
       color: "text-purple-400",
@@ -301,7 +411,7 @@ export default function PatientDashboard() {
     },
     {
       label: "Reports",
-      value: reports.length,
+      value: reportMeta.total,
       sub: "AI-analyzed files",
       icon: "📑",
       color: "text-emerald-400",
@@ -380,6 +490,115 @@ export default function PatientDashboard() {
               </div>
             ))}
       </div>
+
+      {/* Health Profile */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <span className="w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center text-sm">
+              🩸
+            </span>
+            My Health Profile
+          </h2>
+          <p className="text-xs text-zinc-500 mt-1 ml-10">
+            Keep your allergies and basic details up to date. Only you and doctors you have appointments with can see them.
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleSaveProfile}
+          className="glass-card border border-zinc-800/80 rounded-2xl p-6 shadow-xl space-y-4"
+        >
+          <fieldset disabled={profileLoading || savingProfile} className="space-y-4 disabled:opacity-60">
+            <div>
+              <label htmlFor="allergies" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Allergies <span className="text-zinc-500 font-normal">(medicines, food, anything else)</span>
+              </label>
+              <textarea
+                id="allergies"
+                rows={3}
+                maxLength={1000}
+                value={profile.allergies ?? ""}
+                onChange={(e) => updateProfileField("allergies", e.target.value)}
+                placeholder={profileLoading ? "Loading…" : "e.g. Penicillin (rash), peanuts, latex. Leave blank if none."}
+                className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-rose-500 focus:outline-none"
+              />
+              <p className="text-[11px] text-zinc-600 mt-1 text-right">
+                {(profile.allergies ?? "").length}/1000
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="date_of_birth" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Date of birth
+                </label>
+                <input
+                  id="date_of_birth"
+                  type="date"
+                  min="1900-01-01"
+                  max={new Date().toISOString().slice(0, 10)}
+                  value={profile.date_of_birth ?? ""}
+                  onChange={(e) => updateProfileField("date_of_birth", e.target.value || null)}
+                  className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="blood_group" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Blood group
+                </label>
+                <select
+                  id="blood_group"
+                  value={profile.blood_group ?? ""}
+                  onChange={(e) => updateProfileField("blood_group", (e.target.value || null) as BloodGroup | null)}
+                  className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                >
+                  <option value="">Not set</option>
+                  {BLOOD_GROUPS.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="emergency_contact" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Emergency contact
+                </label>
+                <input
+                  id="emergency_contact"
+                  maxLength={200}
+                  value={profile.emergency_contact ?? ""}
+                  onChange={(e) => updateProfileField("emergency_contact", e.target.value)}
+                  placeholder="Name and phone number"
+                  className="w-full glass-input rounded-xl p-3 text-sm bg-zinc-900/80 focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          </fieldset>
+
+          {profileMessage && (
+            <div
+              role="status"
+              className={`p-3.5 rounded-xl text-xs font-medium border ${
+                profileMessage.type === "success"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-red-500/10 border-red-500/30 text-red-400"
+              }`}
+            >
+              {profileMessage.text}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={profileLoading || savingProfile}
+            className="rounded-xl bg-gradient-to-r from-rose-700 via-pink-600 to-purple-600 hover:from-rose-600 hover:to-purple-500 text-white px-6 py-3 text-xs font-semibold disabled:opacity-50 shadow-lg transition-all"
+          >
+            {savingProfile ? "Saving…" : "Save Health Profile"}
+          </button>
+        </form>
+      </section>
 
       {/* Book Appointment */}
       <section className="space-y-4">
@@ -621,7 +840,7 @@ export default function PatientDashboard() {
             </span>
           </h2>
           <span className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full font-medium">
-            {prescriptions.length} issued
+            {prescriptionMeta.total} issued
           </span>
         </div>
 
@@ -750,6 +969,14 @@ export default function PatientDashboard() {
             })
           )}
         </div>
+        <Pager
+          page={prescriptionMeta.page}
+          totalPages={prescriptionMeta.total_pages}
+          total={prescriptionMeta.total}
+          label="prescriptions"
+          disabled={pageLoading === "prescriptions"}
+          onChange={loadPrescriptionsPage}
+        />
       </section>
 
       {/* Medical Reports & AI Analysis */}
@@ -762,7 +989,7 @@ export default function PatientDashboard() {
             Medical Reports &amp; AI Analysis
           </h2>
           <span className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full font-medium">
-            {reports.length} report{reports.length !== 1 ? "s" : ""}
+            {reportMeta.total} report{reportMeta.total !== 1 ? "s" : ""}
           </span>
         </div>
 
@@ -883,6 +1110,14 @@ export default function PatientDashboard() {
             ))
           )}
         </div>
+        <Pager
+          page={reportMeta.page}
+          totalPages={reportMeta.total_pages}
+          total={reportMeta.total}
+          label="reports"
+          disabled={pageLoading === "reports"}
+          onChange={loadReportsPage}
+        />
       </section>
 
       {/* Upload Form */}

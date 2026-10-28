@@ -5,9 +5,18 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { api, getUser } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
 import UserManagement from "../../components/UserManagement";
+import RoleGate from "../../components/RoleGate";
 import { formatINR } from "../../lib/payments";
 
-export default function AdminDashboard() {
+export default function AdminPage() {
+  return (
+    <RoleGate role="admin">
+      <AdminDashboard />
+    </RoleGate>
+  );
+}
+
+function AdminDashboard() {
   const [user, setUser] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
   const [load, setLoad] = useState<any[]>([]);

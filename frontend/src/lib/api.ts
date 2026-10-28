@@ -76,6 +76,33 @@ export interface CreatePrescriptionInput {
   notes?: string;
 }
 
+/** Envelope returned by list endpoints that take ?page=&page_size=. */
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+const pageQuery = (params: Record<string, string | number | undefined>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") q.set(k, String(v));
+  return q.toString();
+};
+
+export interface ManagedUserQuery {
+  role: "patient" | "doctor";
+  q?: string;
+  status?: "all" | "active" | "inactive";
+  page?: number;
+  page_size?: number;
+}
+
+export interface ManagedUserPage extends Paginated<ManagedUser> {
+  role_totals: { patient: number; doctor: number };
+}
+
 export interface ManagedUser {
   id: string;
   full_name: string;
@@ -120,6 +147,36 @@ export interface ReportUploadResult {
   ai_error?: string;
 }
 
+export type Role = "patient" | "doctor" | "admin";
+
+/** GET /api/auth/me */
+export interface AuthedUser {
+  id: string;
+  role: Role;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  wallet_address: string;
+  doctor_profile: { specialization: string; license_number: string; consultation_fee: number | null } | null;
+}
+
+/** Each role's home page. */
+export function dashboardPath(role: Role): string {
+  return role === "doctor" ? "/doctor" : role === "admin" ? "/admin" : "/patient";
+}
+
+export const BLOOD_GROUPS =["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
+export type BloodGroup = (typeof BLOOD_GROUPS)[number];
+
+export interface PatientProfile {
+  date_of_birth: string | null;
+  blood_group: BloodGroup | null;
+  allergies: string | null;
+  emergency_contact: string | null;
+}
+
 export interface DoctorOption {
   id: string;
   full_name: string;
@@ -157,6 +214,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ wallet_address, message, signature, admin_key }),
     }),
+  me: () => request<AuthedUser>("/api/auth/me"),
+  getMyProfile: () =>request<PatientProfile>("/api/patients/me/profile"),
+  updateMyProfile: (body: PatientProfile) =>
+    request<PatientProfile>("/api/patients/me/profile", { method: "PUT", body: JSON.stringify(body) }),
   getDoctors: () => request<DoctorOption[]>("/api/appointments/doctors"),
   getAppointments: () => request<any[]>("/api/appointments"),
   createAppointment: (body: { doctor_id: string; scheduled_at: string; reason?: string }) =>
@@ -168,7 +229,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ appointment_id, method }),
     }),
-  getReports: () => request<any[]>("/api/reports"),
+  getReports: (page = 1, page_size = 5) =>
+    request<Paginated<any>>(`/api/reports?${pageQuery({ page, page_size })}`),
   uploadReport: (form: FormData) =>
     request<ReportUploadResult>("/api/reports", { method: "POST", body: form }),
   verifyReport: (reportId: string) => request<IntegrityResult>(`/api/reports/${reportId}/verify`),
@@ -176,7 +238,8 @@ export const api = {
     request<IntegrityResult>(`/api/prescriptions/${prescriptionId}/verify`),
   getReportFileUrl: (reportId: string) =>
     request<{ url: string; expires_in: number }>(`/api/reports/${reportId}/file`),
-  getPrescriptions: () => request<any[]>("/api/prescriptions"),
+  getPrescriptions: (page = 1, page_size = 5) =>
+    request<Paginated<any>>(`/api/prescriptions?${pageQuery({ page, page_size })}`),
   createPrescription: (body: CreatePrescriptionInput) =>
     request<any>("/api/prescriptions", {
       method: "POST",
@@ -187,7 +250,8 @@ export const api = {
   getNotifications: () => request<AppNotification[]>("/api/notifications"),
   markAllNotificationsRead: () =>
     request<{ ok: true }>("/api/notifications/read-all", { method: "PATCH" }),
-  getManagedUsers: () => request<ManagedUser[]>("/api/admin/users"),
+  getManagedUsers: (query: ManagedUserQuery) =>
+    request<ManagedUserPage>(`/api/admin/users?${pageQuery({ ...query })}`),
   setUserActive: (id: string, is_active: boolean) =>
     request<{ id: string; is_active: boolean; cancelled_appointments: number; patients_notified: number }>(
       `/api/admin/users/${id}/active`,

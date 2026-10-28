@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { api, getUser, MedicationItem } from "../../lib/api";
+import { api, getUser, MedicationItem, Paginated } from "../../lib/api";
 import DashboardHeader from "../../components/DashboardHeader";
+import Pager from "../../components/Pager";
+import RoleGate from "../../components/RoleGate";
 import { formatINR, PaymentSummary } from "../../lib/payments";
 import VerifyIntegrity from "../../components/VerifyIntegrity";
 import { chainLabel, explorerTxUrl, shortHash } from "../../lib/chain";
+
+const PAGE_SIZE = 5;
 
 interface AppointmentItem {
   appointment_id: string;
@@ -15,6 +19,7 @@ interface AppointmentItem {
   scheduled_at: string;
   status: string;
   patient_report_count: number;
+  patient_allergies: string | null;
   fee: number | null;
   payment: PaymentSummary | null;
 }
@@ -56,10 +61,20 @@ function EmptyState({
   );
 }
 
-export default function DoctorDashboard() {
+export default function DoctorPage() {
+  return (
+    <RoleGate role="doctor">
+      <DoctorDashboard />
+    </RoleGate>
+  );
+}
+
+function DoctorDashboard() {
   const [user, setUser] = useState<any>(null);
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
+  const [prescriptionPage, setPrescriptionPage] = useState({ page: 1, total: 0, total_pages: 1 });
+  const [prescriptionsLoading, setPrescriptionsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -82,15 +97,31 @@ export default function DoctorDashboard() {
     loadData();
   }, []);
 
+  const showPrescriptions = (res: Paginated<PrescriptionRecord>) => {
+    setPrescriptions(res.items);
+    setPrescriptionPage({ page: res.page, total: res.total, total_pages: res.total_pages });
+  };
+
+  const loadPrescriptionsPage = async (page: number) => {
+    setPrescriptionsLoading(true);
+    try {
+      showPrescriptions(await api.getPrescriptions(page, PAGE_SIZE));
+    } catch (err) {
+      console.error("Could not load prescriptions:", err);
+    } finally {
+      setPrescriptionsLoading(false);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
       const [appts, presc] = await Promise.allSettled([
         api.getAppointments(),
-        api.getPrescriptions(),
+        api.getPrescriptions(1, PAGE_SIZE),
       ]);
       if (appts.status === "fulfilled") setAppointments(appts.value);
-      if (presc.status === "fulfilled") setPrescriptions(presc.value);
+      if (presc.status === "fulfilled") showPrescriptions(presc.value);
     } catch (err) {
       console.error("Error loading doctor data:", err);
     } finally {
@@ -187,8 +218,7 @@ export default function DoctorDashboard() {
       setMedications([{ name: "", dosage: "", frequency: "", duration_days: 7 }]);
       setNotes("");
       setSelectedAppointmentId("");
-      const refreshed = await api.getPrescriptions().catch(() => []);
-      setPrescriptions(refreshed);
+      await loadPrescriptionsPage(1);
     } catch (err: any) {
       setErrorMessage(err.message || "Failed to create prescription. Please try again.");
     } finally {
@@ -200,10 +230,11 @@ export default function DoctorDashboard() {
     new Map(
       appointments.map((a) => [
         a.patient_id,
-        { id: a.patient_id, name: a.patient_name },
+        { id: a.patient_id, name: a.patient_name, allergies: a.patient_allergies },
       ])
     ).values()
   );
+  const selectedPatientAllergies = uniquePatients.find((p) => p.id === selectedPatientId)?.allergies;
 
   return (
     <div className="min-h-screen bg-[#030712] text-zinc-100 p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
@@ -251,7 +282,7 @@ export default function DoctorDashboard() {
           },
           {
             label: "Prescriptions Issued",
-            value: prescriptions.length,
+            value: prescriptionPage.total,
             sub: "Blockchain-anchored",
             icon: "💊",
             color: "text-purple-400",
@@ -389,6 +420,11 @@ export default function DoctorDashboard() {
                       </span>
                     )}
                   </p>
+                  {a.patient_allergies && (
+                    <p className="mt-1.5 text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-2.5 py-1 inline-block max-w-full break-words">
+                      ⚠️ Allergies: {a.patient_allergies}
+                    </p>
+                  )}
                 </div>
 
                 <div className="self-start sm:self-auto flex flex-wrap items-center gap-2 flex-shrink-0">
@@ -515,6 +551,15 @@ export default function DoctorDashboard() {
               </select>
             </div>
           </div>
+
+          {selectedPatientAllergies && (
+            <div
+              role="alert"
+              className="p-3.5 rounded-xl text-xs font-medium border bg-rose-500/10 border-rose-500/30 text-rose-300 break-words"
+            >
+              ⚠️ This patient has recorded allergies: {selectedPatientAllergies}
+            </div>
+          )}
 
           {/* Medication rows */}
           <div className="space-y-3">
@@ -718,7 +763,7 @@ export default function DoctorDashboard() {
             Prescription History
           </h2>
           <span className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full font-medium">
-            {prescriptions.length} on file
+            {prescriptionPage.total} on file
           </span>
         </div>
 
@@ -828,6 +873,14 @@ export default function DoctorDashboard() {
             })
           )}
         </div>
+        <Pager
+          page={prescriptionPage.page}
+          totalPages={prescriptionPage.total_pages}
+          total={prescriptionPage.total}
+          label="prescriptions"
+          disabled={prescriptionsLoading}
+          onChange={loadPrescriptionsPage}
+        />
       </section>
     </div>
   );
