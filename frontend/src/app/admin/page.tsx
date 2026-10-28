@@ -76,14 +76,14 @@ function AdminDashboard() {
               <span>Platform Administration · Real-Time Throughput Analytics</span>
             </div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-black bg-gradient-to-r from-blue-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
-              Admin Command Center 🛡️
+              Admin Command Center 
             </h1>
             <p className="text-zinc-400 text-xs sm:text-sm mt-1.5 max-w-xl leading-relaxed">
               Real-time platform metrics populated from PostgreSQL analytical views (<code className="text-zinc-300">v_admin_analytics</code>), tracking cryptographic anchoring and clinician throughput.
             </p>
           </div>
           <div className="hidden md:flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-3xl">
-            📊
+            
           </div>
         </div>
       </div>
