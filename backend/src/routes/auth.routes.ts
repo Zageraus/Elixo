@@ -198,7 +198,7 @@ router.post("/register", async (req, res) => {
   });
 
   if (authError) {
-    const duplicate = /already registered|already exists|duplicate/i.test(authError.message);
+    const duplicate = /already (been )?registered|already exists|duplicate/i.test(authError.message);
     return res.status(duplicate ? 409 : 400).json({
       error: duplicate ? "An account with this email already exists. Please log in." : authError.message,
     });
