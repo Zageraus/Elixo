@@ -121,7 +121,7 @@ When `BLOCKCHAIN_ENABLED=true`, the SHA-256 hash of each report file (and of eac
 
 ## 💾 Database design
 
-The schema lives in `db/migrations/` (also bundled into `db/ALL_IN_ONE_SETUP.sql`). The **ER diagram, relational schema, data dictionary and normalization proof** are in [`docs/DATABASE_DESIGN.md`](docs/DATABASE_DESIGN.md); the project proposal and Gantt chart are in [`docs/PROJECT_PROPOSAL.md`](docs/PROJECT_PROPOSAL.md).
+The schema lives in `db/migrations/` (also bundled into `db/ALL_IN_ONE_SETUP.sql`). The **ER diagram, relational schema, data dictionary and normalization proof** are in [`docs/DATABASE_DESIGN.md`](docs/DATABASE_DESIGN.md); the project proposal and Gantt chart are in [`docs/PROJECT_PROPOSAL.md`](docs/PROJECT_PROPOSAL.md). A plain-language walkthrough of the whole project, with a rubric checklist and likely viva questions, is in [`docs/ELIXOR_Project_Overview.pdf`](docs/ELIXOR_Project_Overview.pdf).
 
 ### Tables (3NF / BCNF)
 `users` · `doctor_profiles` · `patient_profiles` · `appointments` · `payments` · `medical_reports` · `ai_analyses` · `prescriptions` · `prescription_items` · `blockchain_transactions` · `notifications` · `audit_logs` · `auth_nonces` (13 tables, 17 foreign keys)
