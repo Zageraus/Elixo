@@ -42,4 +42,6 @@ app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`HealthChain backend listening on :${PORT}`));
+app.listen(Number(PORT), "0.0.0.0", () => {
+  console.log(`HealthChain backend listening on :${PORT}`);
+});

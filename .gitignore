@@ -29,3 +29,4 @@ backups/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+.vercel
