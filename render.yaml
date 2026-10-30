@@ -31,6 +31,6 @@ services:
       - key: BLOCKCHAIN_ENABLED
         value: "false"
       - key: AI_PROVIDER
-        value: claude
-      - key: ANTHROPIC_API_KEY
+        value: openai-compatible
+      - key: AI_API_KEY
         sync: false

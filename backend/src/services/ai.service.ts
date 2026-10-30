@@ -6,6 +6,9 @@ import { prisma, toNumber } from "../config/prisma.js";
  *   - "ollama" (default): a local model through Ollama, for running on a laptop.
  *   - "claude": Claude through the Anthropic API, for the deployed server where
  *     there is no Ollama. Needs ANTHROPIC_API_KEY.
+ *   - "openai-compatible": any chat API that follows the OpenAI format. The
+ *     default is Groq's free tier; Gemini and OpenRouter also work by changing
+ *     AI_BASE_URL and AI_MODEL. Needs AI_API_KEY.
  */
 const AI_PROVIDER = (process.env.AI_PROVIDER || "ollama").toLowerCase();
 
@@ -16,6 +19,10 @@ const LOCAL_CHAT_MODEL =
   process.env.LOCAL_CHAT_MODEL || "qwen2.5:1.5b-instruct";
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+
+const AI_BASE_URL = (process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/+$/, "");
+
+const AI_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 
 type AnalysisResult = {
   summary: string;
@@ -83,24 +90,31 @@ function validateAnalysis(parsed: AnalysisResult, source: string): AnalysisResul
 async function generateLocalAnalysis(
   reportText: string
 ): Promise<AnalysisResult> {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: LOCAL_CHAT_MODEL,
-      stream: false,
-      format: "json",
-      options: {
-        temperature: 0.2,
+  let response: Response;
+  try {
+    response = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt(reportText) },
-      ],
-    }),
-  });
+      body: JSON.stringify({
+        model: LOCAL_CHAT_MODEL,
+        stream: false,
+        format: "json",
+        options: {
+          temperature: 0.2,
+        },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt(reportText) },
+        ],
+      }),
+    });
+  } catch {
+    throw new Error(
+      `Can't reach Ollama at ${OLLAMA_URL}. On a deployed server, set AI_PROVIDER to openai-compatible or claude.`
+    );
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -129,6 +143,69 @@ async function generateLocalAnalysis(
   }
 
   return validateAnalysis(parsed, "Local AI");
+}
+
+async function generateCompatibleAnalysis(
+  reportText: string
+): Promise<AnalysisResult> {
+  if (!process.env.AI_API_KEY) {
+    throw new Error("AI_PROVIDER is openai-compatible but AI_API_KEY isn't set on the server.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${AI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt(reportText) },
+        ],
+      }),
+    });
+  } catch {
+    throw new Error(`Can't reach the AI service at ${AI_BASE_URL}.`);
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("The AI API key on the server was rejected.");
+  }
+  if (response.status === 429) {
+    throw new Error("The free AI quota is used up for now. Please try again in a minute.");
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `AI request failed (${response.status}). Check that the model "${AI_MODEL}" exists for this API. ${detail.slice(0, 200)}`
+    );
+  }
+
+  const result = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+
+  const content = result.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("The AI returned an empty response.");
+  }
+
+  let parsed: AnalysisResult;
+
+  try {
+    parsed = JSON.parse(content) as AnalysisResult;
+  } catch {
+    throw new Error("The AI returned invalid JSON. Please try again.");
+  }
+
+  return validateAnalysis(parsed, "The AI");
 }
 
 let anthropic: Anthropic | null = null;
@@ -208,9 +285,16 @@ export async function analyzeReport(params: {
     const result = await generateClaudeAnalysis(reportText);
     parsed = result.analysis;
     modelUsed = result.model;
-  } else {
+  } else if (AI_PROVIDER === "openai-compatible") {
+    parsed = await generateCompatibleAnalysis(reportText);
+    modelUsed = AI_MODEL;
+  } else if (AI_PROVIDER === "ollama") {
     parsed = await generateLocalAnalysis(reportText);
     modelUsed = LOCAL_CHAT_MODEL;
+  } else {
+    throw new Error(
+      `Unknown AI_PROVIDER "${AI_PROVIDER}". Use ollama, openai-compatible or claude.`
+    );
   }
 
   try {

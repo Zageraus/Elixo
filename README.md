@@ -101,7 +101,7 @@ flowchart TD
 
 ### 3. Medical reports and AI summaries
 1. The patient uploads a file (≤ 15 MB). It goes to the private `medical-reports` bucket and its SHA-256 hash is stored with the report.
-2. If the patient pastes the report's text, it is sent to the AI model, which returns a JSON summary, flagged findings, severity and confidence. Locally this is an **Ollama model** (`qwen2.5:1.5b-instruct`); the deployed server uses **Claude** through the Anthropic API (`AI_PROVIDER=claude`), since there is no Ollama on Render. The result is validated and stored in `ai_analyses`.
+2. If the patient pastes the report's text, it is sent to the AI model, which returns a JSON summary, flagged findings, severity and confidence. Locally this is an **Ollama model** (`qwen2.5:1.5b-instruct`); the deployed server has no Ollama, so it uses a hosted model on **Groq's free API** (`AI_PROVIDER=openai-compatible`). Claude through the Anthropic API (`AI_PROVIDER=claude`) is also supported. The result is validated and stored in `ai_analyses`.
 3. The upload message reports what actually happened: AI summary added, skipped (no text) or failed, and whether the file was anchored.
 4. **View PDF** asks the backend for the file. It checks the viewer may see the report (patient, assigned doctor or admin) and returns a signed link that expires after 60 seconds.
 
@@ -375,9 +375,12 @@ A local chain starts empty each time `npm run node` restarts: run `setup:local`,
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | server-only key for Storage and Auth admin calls |
 | `SUPABASE_ANON_KEY` | ✅ | used for password login |
 | `FRONTEND_ORIGIN` | ✅ | CORS origin, e.g. `http://localhost:3000` |
-| `AI_PROVIDER` | | `ollama` (default, local model) or `claude` (Anthropic API; used on the deployed server) |
+| `AI_PROVIDER` | | `ollama` (default, local model), `openai-compatible` (hosted OpenAI-format API, e.g. Groq's free tier; used on the deployed server) or `claude` (Anthropic API) |
 | `OLLAMA_URL` | | default `http://127.0.0.1:11434` |
 | `LOCAL_CHAT_MODEL` | | default `qwen2.5:1.5b-instruct` |
+| `AI_API_KEY` | when `AI_PROVIDER=openai-compatible` | API key, e.g. from console.groq.com |
+| `AI_BASE_URL` | | default `https://api.groq.com/openai/v1` |
+| `AI_MODEL` | | default `llama-3.3-70b-versatile` |
 | `ANTHROPIC_API_KEY` | when `AI_PROVIDER=claude` | Anthropic API key |
 | `CLAUDE_MODEL` | | default `claude-opus-5-5` |
 | `BLOCKCHAIN_ENABLED` | | `true` to anchor hashes on-chain |
@@ -472,7 +475,7 @@ The dump covers the `public` schema: tables, data, constraints, indexes, views, 
 | Email auth, booking, accept/decline, prescriptions, payments, notifications, admin user management | ✅ working |
 | Prisma ORM for all table access, transactions, stored procedure | ✅ |
 | Search, filtering and pagination | ✅ admin users (server-side search/filter/pages), prescriptions and reports (pages) |
-| AI summaries | ✅ locally with Ollama, on the live server with Claude; needs the report text pasted in (no OCR) |
+| AI summaries | ✅ locally with Ollama, on the live server with Groq's free API; needs the report text pasted in (no OCR) |
 | View uploaded PDFs | ✅ via 60-second signed links |
 | Blockchain anchoring and integrity checks | ✅ on a local Hardhat chain (`npm run node` must be running); Sepolia supported but not deployed |
 | Wallet (MetaMask) sign-in | API supported; not shown on the login page |
