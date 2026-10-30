@@ -22,7 +22,7 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 
 const AI_BASE_URL = (process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/+$/, "");
 
-const AI_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+const AI_MODEL = process.env.AI_MODEL || "openai/gpt-oss-120b";
 
 type AnalysisResult = {
   summary: string;
@@ -145,31 +145,69 @@ async function generateLocalAnalysis(
   return validateAnalysis(parsed, "Local AI");
 }
 
+/** Preferred chat models, best first, used when AI_MODEL isn't available to this key. */
+const MODEL_PREFERENCE = [/gpt-oss-120b/, /llama-3\.3-70b/, /70b/, /gpt-oss-20b/, /llama/, /qwen/];
+const NOT_CHAT_MODEL = /whisper|tts|orpheus|playai|guard|embed|safeguard/i;
+
+/** The model that worked last, so the lookup only happens once per server start. */
+let compatibleModel = AI_MODEL;
+
+/** Asks the API which models this key can use and picks the best chat model. */
+async function pickAvailableModel(): Promise<string | null> {
+  const response = await fetch(`${AI_BASE_URL}/models`, {
+    headers: { Authorization: `Bearer ${process.env.AI_API_KEY}` },
+  }).catch(() => null);
+  if (!response?.ok) return null;
+
+  const { data } = (await response.json()) as { data?: { id: string; active?: boolean }[] };
+  const ids = (data ?? [])
+    .filter((m) => m.active !== false && !NOT_CHAT_MODEL.test(m.id))
+    .map((m) => m.id);
+  for (const pattern of MODEL_PREFERENCE) {
+    const match = ids.find((id) => pattern.test(id));
+    if (match) return match;
+  }
+  return ids[0] ?? null;
+}
+
+function requestCompletion(model: string, reportText: string) {
+  return fetch(`${AI_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.AI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt(reportText) },
+      ],
+    }),
+  });
+}
+
 async function generateCompatibleAnalysis(
   reportText: string
-): Promise<AnalysisResult> {
+): Promise<{ analysis: AnalysisResult; model: string }> {
   if (!process.env.AI_API_KEY) {
     throw new Error("AI_PROVIDER is openai-compatible but AI_API_KEY isn't set on the server.");
   }
 
   let response: Response;
   try {
-    response = await fetch(`${AI_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.AI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt(reportText) },
-        ],
-      }),
-    });
+    response = await requestCompletion(compatibleModel, reportText);
+    // Hosted providers retire models; if ours is gone, switch to one this key can use.
+    if (response.status === 404) {
+      const fallback = await pickAvailableModel();
+      if (fallback && fallback !== compatibleModel) {
+        console.warn(`AI model "${compatibleModel}" isn't available; using "${fallback}" instead.`);
+        compatibleModel = fallback;
+        response = await requestCompletion(compatibleModel, reportText);
+      }
+    }
   } catch {
     throw new Error(`Can't reach the AI service at ${AI_BASE_URL}.`);
   }
@@ -183,7 +221,7 @@ async function generateCompatibleAnalysis(
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(
-      `AI request failed (${response.status}). Check that the model "${AI_MODEL}" exists for this API. ${detail.slice(0, 200)}`
+      `AI request failed (${response.status}) with model "${compatibleModel}". Set AI_MODEL to a model your API key can use. ${detail.slice(0, 200)}`
     );
   }
 
@@ -205,7 +243,7 @@ async function generateCompatibleAnalysis(
     throw new Error("The AI returned invalid JSON. Please try again.");
   }
 
-  return validateAnalysis(parsed, "The AI");
+  return { analysis: validateAnalysis(parsed, "The AI"), model: compatibleModel };
 }
 
 let anthropic: Anthropic | null = null;
@@ -286,8 +324,9 @@ export async function analyzeReport(params: {
     parsed = result.analysis;
     modelUsed = result.model;
   } else if (AI_PROVIDER === "openai-compatible") {
-    parsed = await generateCompatibleAnalysis(reportText);
-    modelUsed = AI_MODEL;
+    const result = await generateCompatibleAnalysis(reportText);
+    parsed = result.analysis;
+    modelUsed = result.model;
   } else if (AI_PROVIDER === "ollama") {
     parsed = await generateLocalAnalysis(reportText);
     modelUsed = LOCAL_CHAT_MODEL;

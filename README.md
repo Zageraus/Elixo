@@ -380,7 +380,7 @@ A local chain starts empty each time `npm run node` restarts: run `setup:local`,
 | `LOCAL_CHAT_MODEL` | | default `qwen2.5:1.5b-instruct` |
 | `AI_API_KEY` | when `AI_PROVIDER=openai-compatible` | API key, e.g. from console.groq.com |
 | `AI_BASE_URL` | | default `https://api.groq.com/openai/v1` |
-| `AI_MODEL` | | default `llama-3.3-70b-versatile` |
+| `AI_MODEL` | | default `openai/gpt-oss-120b`; if the model is not available to the key, the backend picks one from `/models` |
 | `ANTHROPIC_API_KEY` | when `AI_PROVIDER=claude` | Anthropic API key |
 | `CLAUDE_MODEL` | | default `claude-opus-5-5` |
 | `BLOCKCHAIN_ENABLED` | | `true` to anchor hashes on-chain |
