@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ELIXOR Project Report</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm 17mm 14mm; }
+  :root { --ink:#1b1f24; --muted:#5b6470; --line:#d5dae1; --soft:#f4f6f8; --accent:#4b33c4; --accent-soft:#eeeaff; --ok:#1e6b34; --okbg:#e6f4ea; --todo:#8a5300; --todobg:#fff4e0; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.42; margin: 0; background: #fff; counter-reset: fig; }
+  h1 { font-size: 15pt; margin: 0 0 6pt; padding-bottom: 4pt; border-bottom: 2px solid var(--accent); break-after: avoid; }
+  h1.section { break-before: page; }
+  h2 { font-size: 12pt; margin: 12pt 0 4pt; color: var(--accent); break-after: avoid; }
+  h3 { font-size: 10.5pt; margin: 8pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 5pt; }
+  ul, ol { margin: 0 0 6pt; padding-left: 16pt; } li { margin-bottom: 2pt; }
+  table { width: 100%; border-collapse: collapse; margin: 3pt 0 8pt; font-size: 8.8pt; }
+  th, td { border: 1px solid var(--line); padding: 3pt 5pt; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; }
+  tr { break-inside: avoid; }
+  code { font-family: Consolas, monospace; font-size: 8.5pt; background: var(--soft); padding: 0 2pt; border-radius: 2pt; }
+  pre { font-family: Consolas, monospace; font-size: 8.2pt; background: var(--soft); border: 1px solid var(--line); padding: 5pt 7pt; border-radius: 3pt; white-space: pre-wrap; margin: 3pt 0 7pt; break-inside: avoid; }
+  figure { margin: 5pt 0 10pt; break-inside: avoid; text-align: center; }
+  figure img[src*='ev_api'] { max-width: 86%; } figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 3pt; }
+  figure.narrow img { max-width: 72%; } figure.mobile img { max-width: 34%; } figure.half img { max-width: 58%; }
+  figcaption { counter-increment: fig; font-size: 8.6pt; color: var(--muted); margin-top: 3pt; text-align: left; }
+  figcaption::before { content: "Figure " counter(fig) ". "; font-weight: 600; color: var(--ink); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt; }
+  .callout { background: var(--accent-soft); border-left: 3pt solid var(--accent); padding: 6pt 9pt; margin: 3pt 0 8pt; border-radius: 3pt; }
+  .slot { border: 2px dashed #c9a24a; background: var(--todobg); color: var(--todo); padding: 14pt 10pt; text-align: center; border-radius: 4pt; margin: 4pt 0 10pt; font-size: 9pt; break-inside: avoid; }
+  .slot b { display: block; font-size: 9.6pt; margin-bottom: 2pt; }
+  .tag { white-space: nowrap; display: inline-block; font-size: 7.8pt; padding: 0 4pt; border-radius: 2pt; background: var(--okbg); color: var(--ok); border: 1px solid #bfe3c9; }
+  .tag.todo { background: var(--todobg); color: var(--todo); border-color: #f2d7a6; }
+  .small { font-size: 8.6pt; color: var(--muted); }
+  .ph { background: #fff3b0; padding: 0 2pt; border-radius: 2pt; }
+  /* Cover */
+  .cover { height: 262mm; display: flex; flex-direction: column; }
+  .cover .uni { font-size: 11pt; color: var(--muted); letter-spacing: .3pt; }
+  .cover .title { font-size: 26pt; font-weight: 700; margin: 26pt 0 4pt; line-height: 1.15; }
+  .cover .sub { font-size: 12.5pt; color: var(--muted); margin-bottom: 16pt; }
+  .cover table { font-size: 9.8pt; }
+  .cover .foot { margin-top: auto; font-size: 9pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 6pt; }
+  .toc { columns: 2; column-gap: 18pt; font-size: 9.6pt; } .toc div { margin-bottom: 2.5pt; break-inside: avoid; }
+  .commits td { font-size: 7.9pt; } .commits .ph { white-space: nowrap; } .commits td:nth-child(5) { font-family: Consolas, monospace; }
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<section class="cover">
+  <div class="uni">VELLORE INSTITUTE OF TECHNOLOGY, VELLORE · SCHOOL OF COMPUTER SCIENCE AND ENGINEERING</div>
+  <div class="title">ELIXOR<br>Healthcare Management System</div>
+  <div class="sub">Database Systems (BCSE307L) project report · Assessments 8, 9 and 10</div>
+  <table>
+    <tr><th style="width:28%">Course</th><td>Database Systems, BCSE307L · Fall Semester 2026–2027</td></tr>
+    <tr><th>Faculty</th><td>Dr. Deepika J</td></tr>
+    <tr><th>Slot / Class number</th><td><span class="ph">[L11+L12 or L43+L44]</span> · <span class="ph">[VL2026270104071 or VL2026270104074]</span></td></tr>
+    <tr><th>GitHub repository (public)</th><td>https://github.com/Zageraus/Elixo</td></tr>
+    <tr><th>Date of submission</th><td><span class="ph">[DD Month 2026]</span></td></tr>
+  </table>
+  <h2 style="margin-top:10pt">Team members</h2>
+  <table>
+    <tr><th style="width:6%">#</th><th style="width:36%">Name</th><th style="width:20%">Reg. No</th><th style="width:20%">GitHub ID</th><th>Main responsibility</th></tr>
+    <tr><td>1</td><td><span class="ph">[Name]</span></td><td><span class="ph">[Reg. No]</span></td><td>Zageraus</td><td><span class="ph">[e.g. Backend, ORM, DevOps]</span></td></tr>
+    <tr><td>2</td><td><span class="ph">[Name]</span></td><td><span class="ph">[Reg. No]</span></td><td>Arnahhh</td><td><span class="ph">[e.g. AI and blockchain]</span></td></tr>
+    <tr><td>3</td><td><span class="ph">[Name]</span></td><td><span class="ph">[Reg. No]</span></td><td><span class="ph">[GitHub ID]</span></td><td><span class="ph">[Responsibility]</span></td></tr>
+    <tr><td>4</td><td><span class="ph">[Name]</span></td><td><span class="ph">[Reg. No]</span></td><td><span class="ph">[GitHub ID]</span></td><td><span class="ph">[Responsibility]</span></td></tr>
+  </table>
+  <h2 style="margin-top:8pt">Contents</h2>
+  <div class="toc">
+    <div>0. Project links and resources</div>
+    <div>1. Problem statement</div>
+    <div>2. Project planning</div>
+    <div>3. Database design</div>
+    <div>4. Database implementation</div>
+    <div>5. Application development</div>
+    <div>6. Authentication and role-based authorization</div>
+    <div>7. Database security</div>
+    <div>8. Database backup and recovery</div>
+    <div>9. Version control</div>
+    <div>10. Deployment</div>
+    <div>11. Bonus features</div>
+    <div>12. Project execution walkthrough</div>
+    <div>13. Improvements</div>
+    <div>14. Team commit history</div>
+    <div>15. Marks checklist</div>
+  </div>
+  <div class="foot">Every screenshot in this report was taken from the running application, the live Supabase database or the public GitHub repository on 28–29 October 2026. Highlighted <span class="ph">[fields]</span> and dashed boxes are to be completed by the team before submission.</div>
+</section>
+
+<!-- ============================== 0. LINKS ============================== -->
+<h1 class="section">0. Project links and resources</h1>
+<table>
+  <tr><th style="width:28%">Resource</th><th>URL</th><th style="width:26%">Notes</th></tr>
+  <tr><td>Source code (public)</td><td>https://github.com/Zageraus/Elixo</td><td>Branches <code>main</code> and <code>dev</code></td></tr>
+  <tr><td>Commit history</td><td>https://github.com/Zageraus/Elixo/commits/main</td><td></td></tr>
+  <tr><td>Continuous integration</td><td>https://github.com/Zageraus/Elixo/actions</td><td>GitHub Actions workflow <code>ci.yml</code></td></tr>
+  <tr><td>Database design document</td><td>https://github.com/Zageraus/Elixo/blob/main/docs/DATABASE_DESIGN.md</td><td>ER diagram, schema, data dictionary</td></tr>
+  <tr><td>Project proposal and Gantt chart</td><td>https://github.com/Zageraus/Elixo/blob/main/docs/PROJECT_PROPOSAL.md</td><td></td></tr>
+  <tr><td>SQL migrations</td><td>https://github.com/Zageraus/Elixo/tree/main/db/migrations</td><td>001–012, plus <code>ALL_IN_ONE_SETUP.sql</code></td></tr>
+  <tr><td>Live application</td><td><span class="ph">[Vercel URL]</span> (frontend), <span class="ph">[Render URL]</span> (API)</td><td><span class="tag todo">not yet deployed</span></td></tr>
+  <tr><td>Local application</td><td>http://localhost:3000 (frontend), http://localhost:4000 (API, <code>/health</code>)</td><td>How it was run for the screenshots</td></tr>
+  <tr><td>Database (managed)</td><td>https://supabase.com/dashboard/project/wjlteoyswqawvphnfali</td><td>Supabase PostgreSQL 17 (owner access only)</td></tr>
+</table>
+<h2>Tools, frameworks and libraries</h2>
+<table>
+  <tr><th style="width:28%">Tool</th><th style="width:16%">Version</th><th>Used for</th><th style="width:34%">Link</th></tr>
+  <tr><td>PostgreSQL (Supabase)</td><td>17.6</td><td>Relational database, Storage, Auth</td><td>https://supabase.com</td></tr>
+  <tr><td>Prisma ORM</td><td>6.19.3</td><td>All table access from the backend</td><td>https://www.prisma.io</td></tr>
+  <tr><td>Node.js / Express.js</td><td>20+ / 4.19</td><td>REST API</td><td>https://expressjs.com</td></tr>
+  <tr><td>Next.js / React</td><td>14.2 / 18.3</td><td>Frontend</td><td>https://nextjs.org</td></tr>
+  <tr><td>Tailwind CSS</td><td>3.4</td><td>Responsive styling</td><td>https://tailwindcss.com</td></tr>
+  <tr><td>Zod</td><td>3.23</td><td>Request validation</td><td>https://zod.dev</td></tr>
+  <tr><td>jsonwebtoken</td><td>9.0</td><td>JWT login tokens</td><td>https://github.com/auth0/node-jsonwebtoken</td></tr>
+  <tr><td>Ollama (qwen2.5:1.5b-instruct)</td><td>local</td><td>AI summaries of report text</td><td>https://ollama.com</td></tr>
+  <tr><td>Hardhat, ethers.js, Solidity</td><td>0.8.24 (Solidity)</td><td>Tamper-evident record anchoring</td><td>https://hardhat.org</td></tr>
+  <tr><td>Docker, Docker Compose</td><td>—</td><td>Container images</td><td>https://www.docker.com</td></tr>
+  <tr><td>GitHub Actions</td><td>—</td><td>CI pipeline</td><td>https://github.com/features/actions</td></tr>
+  <tr><td>Render, Vercel</td><td>—</td><td>Planned hosting for API and frontend</td><td>https://render.com · https://vercel.com</td></tr>
+</table>
+<h2>APIs and datasets</h2>
+<ul>
+  <li><b>ELIXOR REST API</b> (our own): <code>/api/auth</code>, <code>/api/appointments</code>, <code>/api/payments</code>, <code>/api/prescriptions</code>, <code>/api/reports</code>, <code>/api/patients</code>, <code>/api/notifications</code>, <code>/api/admin</code>. Full list in the README: https://github.com/Zageraus/Elixo#-api-reference</li>
+  <li><b>External APIs:</b> Supabase Auth and Storage (https://supabase.com/docs), Ollama local REST API (http://127.0.0.1:11434), Ethereum JSON-RPC on a local Hardhat node (http://127.0.0.1:8545).</li>
+  <li><b>Dataset:</b> no external dataset. The demo data is synthetic and hand-written: <code>db/seed/seed.sql</code>, <code>demo_seed.sql</code>, <code>demo_payments.sql</code> (10 doctors, 10 patients, ~30 appointments, prescriptions, reports, payments). No real patient data is used.</li>
+</ul>
+<figure><img src="img/gh_01_repo.jpg"><figcaption>The public GitHub repository, <code>main</code> branch, 36 commits, 2 branches, CI check passing on the latest commit.</figcaption></figure>
+
+<!-- ============================== 1. PROBLEM ============================== -->
+<h1 class="section">1. Problem statement</h1>
+<p><b>Domain:</b> healthcare (clinic management).</p>
+<p>Small clinics and independent doctors keep appointments, prescriptions, lab reports and payments in separate notebooks, spreadsheets and chat apps. This causes double bookings, lost reports, prescriptions that can be altered without trace, no control over who can see a patient's records, and no reliable view of revenue or doctor workload.</p>
+<p>ELIXOR stores all of this in <b>one relational PostgreSQL database</b> designed to third normal form. The database itself enforces integrity with keys, constraints, triggers and a stored procedure; access is secured with login, roles and row-level rules; analytics come from SQL views; and every multi-step change runs in a transaction. A modern web application (Next.js + Express.js + Prisma ORM) lets three kinds of users work with the data:</p>
+<table>
+  <tr><th style="width:14%">Role</th><th>Can do</th></tr>
+  <tr><td>Patient</td><td>register/login, keep a health profile (allergies, blood group), find doctors by specialization, book and pay for visits, view prescriptions and reports, upload reports for an AI summary, verify records were not tampered with</td></tr>
+  <tr><td>Doctor</td><td>see their queue with patient allergies, accept/decline/complete visits, issue multi-medicine prescriptions</td></tr>
+  <tr><td>Admin</td><td>see platform-wide analytics, search/filter/page through users, deactivate or delete accounts</td></tr>
+</table>
+<figure><img src="img/app_01_login.jpg"><figcaption>The ELIXOR landing and login page (http://localhost:3000).</figcaption></figure>
+
+<!-- ============================== 2. PLANNING ============================== -->
+<h1 class="section">2. Project planning</h1>
+<table>
+  <tr><th style="width:24%">Item</th><th>Content</th></tr>
+  <tr><td>1. Project title</td><td>ELIXOR — A Healthcare Management System with a Normalized Relational Database, Role-Based Access and Tamper-Evident Medical Records</td></tr>
+  <tr><td>2. Problem statement</td><td>Section 1.</td></tr>
+  <tr><td>3. Objectives</td><td>(1) ER model and 3NF relational schema with ≥ 4 entities, ≥ 3 relationships, ≥ 8 tables · (2) PostgreSQL implementation with keys, constraints and indexes · (3) joins, aggregates, views, transactions, a stored procedure and triggers · (4) all database access through an ORM · (5) a responsive web app with login, dashboards, CRUD, search, filtering, pagination, validation and error handling · (6) JWT authentication, RBAC on a single Users table, hashed passwords, injection-safe queries, secrets in .env · (7) GitHub, backup/restore, Docker, CI and cloud deployment</td></tr>
+  <tr><td>4. Scope</td><td><b>In:</b> appointments, payments (simulated), prescriptions, medical reports with AI summaries, notifications, user management, analytics, audit trail, blockchain anchoring. <b>Out:</b> real payment gateway, clinical decision making, hospital inventory/wards/insurance.</td></tr>
+  <tr><td>5. Team and responsibilities</td><td>See the cover page.</td></tr>
+  <tr><td>6. Technology stack</td><td>Next.js 14 + React 18 + Tailwind · Express.js 4 + TypeScript + Zod · Prisma 6 · PostgreSQL 17 (Supabase) · JWT + Supabase Auth (bcrypt) · Hardhat/Solidity · Ollama · Docker · GitHub Actions · Render + Vercel</td></tr>
+  <tr><td>7. Major deliverables</td><td>ER diagram, schema and data dictionary · SQL migrations 001–012 and seed data · backend API · frontend · smart contract and tests · backup/restore scripts · Dockerfiles, compose file and CI workflow · README · this report</td></tr>
+</table>
+<h2>8. Project timeline (Gantt chart)</h2>
+<figure><img src="img/ev_gantt_chart.jpg"><figcaption>Gantt chart (source: <code>docs/PROJECT_PROPOSAL.md</code>). The red line marks 29 October 2026.</figcaption></figure>
+
+<!-- ============================== 3. DESIGN ============================== -->
+<h1 class="section">3. Database design</h1>
+<h2>3.1 ER diagram</h2>
+<figure><img src="img/ev_er_diagram.jpg"><figcaption>ER diagram in crow's-foot notation (13 entities). <code>||</code> exactly one, <code>o|</code> zero or one, <code>o{</code> zero or more, <code>|{</code> one or more.</figcaption></figure>
+<h2>3.2 Entities and relationships</h2>
+<div class="grid2">
+<table>
+  <tr><th>Primary entity</th><th>Table</th></tr>
+  <tr><td>User (patient / doctor / admin)</td><td><code>users</code></td></tr>
+  <tr><td>Appointment</td><td><code>appointments</code></td></tr>
+  <tr><td>Medical Report</td><td><code>medical_reports</code></td></tr>
+  <tr><td>Prescription</td><td><code>prescriptions</code></td></tr>
+  <tr><td>Payment</td><td><code>payments</code></td></tr>
+  <tr><th>Supporting entity</th><th>Table</th></tr>
+  <tr><td>Doctor / Patient profile (1:1)</td><td><code>doctor_profiles</code>, <code>patient_profiles</code></td></tr>
+  <tr><td>Prescription item (weak)</td><td><code>prescription_items</code></td></tr>
+  <tr><td>AI analysis, chain transaction</td><td><code>ai_analyses</code>, <code>blockchain_transactions</code></td></tr>
+  <tr><td>Notification, audit log, nonce</td><td><code>notifications</code>, <code>audit_logs</code>, <code>auth_nonces</code></td></tr>
+</table>
+<table>
+  <tr><th>Relationship</th><th>Card.</th></tr>
+  <tr><td>Patient <b>books</b> Appointment</td><td>1 : N</td></tr>
+  <tr><td>Doctor <b>attends</b> Appointment</td><td>1 : N</td></tr>
+  <tr><td>Appointment <b>paid by</b> Payment</td><td>1 : 0..1</td></tr>
+  <tr><td>Doctor <b>issues</b> / Patient <b>receives</b> Prescription</td><td>1 : N</td></tr>
+  <tr><td>Appointment <b>results in</b> Prescription</td><td>1 : N (optional)</td></tr>
+  <tr><td>Prescription <b>contains</b> Item</td><td>1 : N (identifying)</td></tr>
+  <tr><td>Patient <b>owns</b> / Doctor <b>reviews</b> Report</td><td>1 : N</td></tr>
+  <tr><td>Report <b>analysed by</b> AI analysis</td><td>1 : N</td></tr>
+  <tr><td>Report / Prescription <b>anchored by</b> Chain tx</td><td>1 : N</td></tr>
+  <tr><td>User <b>has profile</b> Doctor/Patient profile</td><td>1 : 0..1</td></tr>
+  <tr><td>User <b>receives</b> Notification; <b>performs</b> Audit log</td><td>1 : N</td></tr>
+</table>
+</div>
+<h2>3.3 Relational schema (PK in bold, FK in italics)</h2>
+<pre>users              (<b>id</b>, wallet_address, role, full_name, email, phone, is_active, created_at, updated_at)
+doctor_profiles    (<b><i>user_id</i></b>→users, specialization, license_number, years_experience, consultation_fee, bio)
+patient_profiles   (<b><i>user_id</i></b>→users, date_of_birth, blood_group, allergies, emergency_contact)
+appointments       (<b>id</b>, <i>patient_id</i>→users, <i>doctor_id</i>→users, scheduled_at, status, reason, notes, created_at, updated_at)
+payments           (<b>id</b>, <i>appointment_id</i>→appointments UNIQUE, amount, currency, method, provider, provider_ref, status, paid_at, refunded_at)
+prescriptions      (<b>id</b>, <i>appointment_id</i>→appointments, <i>patient_id</i>→users, <i>doctor_id</i>→users, notes, issued_at)
+prescription_items (<b>id</b>, <i>prescription_id</i>→prescriptions, line_no, medicine_name, dosage, frequency, duration_days)  UNIQUE(prescription_id, line_no)
+medical_reports    (<b>id</b>, <i>patient_id</i>→users, <i>doctor_id</i>→users, <i>appointment_id</i>→appointments, report_type, title, file_url, file_hash, raw_text, created_at)
+ai_analyses        (<b>id</b>, <i>report_id</i>→medical_reports, summary, findings, embedding, model_used, confidence, created_at)
+blockchain_transactions (<b>id</b>, <i>report_id</i>→medical_reports, <i>prescription_id</i>→prescriptions, chain, tx_hash, block_number, data_hash, status, gas_used, created_at, confirmed_at)
+notifications      (<b>id</b>, <i>user_id</i>→users, type, message, is_read, created_at)
+audit_logs         (<b>id</b>, <i>user_id</i>→users, action, entity_type, entity_id, metadata, created_at)
+auth_nonces        (<b>id</b>, wallet_address, nonce, expires_at, consumed_at, created_at)</pre>
+<h2>3.4 Data dictionary (key tables)</h2>
+<p class="small">The full dictionary for all 13 tables is in <code>docs/DATABASE_DESIGN.md</code> §4.</p>
+<div class="grid2">
+<table>
+  <tr><th colspan="3">users</th></tr>
+  <tr><th>Column</th><th>Type</th><th>Constraints</th></tr>
+  <tr><td>id</td><td>uuid</td><td>PK, default gen_random_uuid()</td></tr>
+  <tr><td>role</td><td>user_role</td><td>NN, default 'patient'</td></tr>
+  <tr><td>full_name</td><td>text</td><td>NN</td></tr>
+  <tr><td>email</td><td>citext</td><td>UNIQUE</td></tr>
+  <tr><td>wallet_address</td><td>citext</td><td>UNIQUE</td></tr>
+  <tr><td>is_active</td><td>boolean</td><td>NN, default true</td></tr>
+  <tr><td>created_at / updated_at</td><td>timestamptz</td><td>NN, default now()</td></tr>
+</table>
+<table>
+  <tr><th colspan="3">appointments</th></tr>
+  <tr><th>Column</th><th>Type</th><th>Constraints</th></tr>
+  <tr><td>id</td><td>uuid</td><td>PK</td></tr>
+  <tr><td>patient_id / doctor_id</td><td>uuid</td><td>NN, FK → users, CASCADE; CHECK patient ≠ doctor</td></tr>
+  <tr><td>scheduled_at</td><td>timestamptz</td><td>NN</td></tr>
+  <tr><td>status</td><td>appointment_status</td><td>NN, default 'requested'</td></tr>
+  <tr><td>reason, notes</td><td>text</td><td></td></tr>
+</table>
+<table>
+  <tr><th colspan="3">payments</th></tr>
+  <tr><th>Column</th><th>Type</th><th>Constraints</th></tr>
+  <tr><td>appointment_id</td><td>uuid</td><td>NN, UNIQUE, FK → appointments</td></tr>
+  <tr><td>amount</td><td>numeric(10,2)</td><td>NN, CHECK &gt; 0</td></tr>
+  <tr><td>method / status</td><td>enum</td><td>NN; default 'paid'</td></tr>
+  <tr><td>provider_ref</td><td>text</td><td>NN, UNIQUE</td></tr>
+  <tr><td>refunded_at</td><td>timestamptz</td><td>CHECK set iff refunded</td></tr>
+</table>
+<table>
+  <tr><th colspan="3">prescription_items</th></tr>
+  <tr><th>Column</th><th>Type</th><th>Constraints</th></tr>
+  <tr><td>prescription_id</td><td>uuid</td><td>NN, FK → prescriptions, CASCADE</td></tr>
+  <tr><td>line_no</td><td>smallint</td><td>NN, CHECK &gt; 0, UNIQUE with prescription_id</td></tr>
+  <tr><td>medicine_name</td><td>text</td><td>NN, CHECK not blank</td></tr>
+  <tr><td>dosage, frequency</td><td>text</td><td>NN</td></tr>
+  <tr><td>duration_days</td><td>integer</td><td>NN, CHECK &gt; 0</td></tr>
+</table>
+</div>
+<h2>3.5 Design requirements checklist</h2>
+<table>
+  <tr><th>Requirement</th><th>ELIXOR</th><th style="width:10%"></th></tr>
+  <tr><td>Minimum 4 primary entities</td><td>5 (User, Appointment, Medical Report, Prescription, Payment)</td><td><span class="tag">met</span></td></tr>
+  <tr><td>Minimum 3 relationships</td><td>14 (§3.2)</td><td><span class="tag">met</span></td></tr>
+  <tr><td>Minimum 8 tables, all from the ER diagram</td><td>13 tables, one per ER entity</td><td><span class="tag">met</span></td></tr>
+  <tr><td>Primary key in every table</td><td>13 primary keys (table in §4.1)</td><td><span class="tag">met</span></td></tr>
+  <tr><td>Appropriate foreign keys</td><td>17 foreign keys with CASCADE / SET NULL</td><td><span class="tag">met</span></td></tr>
+  <tr><td>NOT NULL, UNIQUE, CHECK, DEFAULT</td><td>All used (constraints screenshot below)</td><td><span class="tag">met</span></td></tr>
+  <tr><td>3NF or higher</td><td>All tables in BCNF after migration 012 (§3.6)</td><td><span class="tag">met</span></td></tr>
+  <tr><td>Indexes where required</td><td>~30 indexes (indexes screenshot below)</td><td><span class="tag">met</span></td></tr>
+</table>
+<figure><img src="img/ev_db_constraints.jpg"><figcaption>CHECK and UNIQUE constraints in the live database.</figcaption></figure>
+<figure><img src="img/ev_db_indexes.jpg"><figcaption>Indexes (primary-key indexes omitted), including <code>pg_trgm</code> GIN indexes for name/email search and a vector index.</figcaption></figure>
+<h2>3.6 Normalization</h2>
+<p>Every table has a single-column surrogate primary key, so there are no partial dependencies (2NF). Two violations of the higher forms were found and removed by migration 012:</p>
+<table>
+  <tr><th style="width:30%">Before</th><th style="width:26%">Violation</th><th>After</th></tr>
+  <tr><td><code>prescriptions.medications</code>: a JSON array of medicines</td><td>Repeating group → not 1NF</td><td>New table <code>prescription_items</code>, one row per medicine (screenshot below)</td></tr>
+  <tr><td><code>payments.patient_id</code>, <code>doctor_id</code></td><td>payment → appointment → patient: transitive → not 3NF</td><td>Columns dropped; reached through the appointment (screenshot below)</td></tr>
+</table>
+<p>Functional dependencies after the change: in every table the only determinants are candidate keys (<code>id</code>, plus <code>email</code>, <code>wallet_address</code>, <code>license_number</code>, <code>provider_ref</code>, <code>appointment_id</code> in payments, and <code>(prescription_id, line_no)</code>), so all tables are in <b>BCNF</b>. <code>prescriptions</code> keeps <code>patient_id</code>/<code>doctor_id</code> because <code>appointment_id</code> is optional and therefore does not determine them; trigger <code>trg_check_prescription_appointment</code> keeps them consistent when it is set.</p>
+
+<figure><img src="img/ev_db_prescription_items.jpg"><figcaption>1NF: medicines stored as rows.</figcaption></figure>
+<figure><img src="img/ev_db_payments_cols.jpg"><figcaption>3NF: <code>payments</code> no longer stores patient or doctor.</figcaption></figure>
+
+
+<!-- ============================== 4. IMPLEMENTATION ============================== -->
+<h1 class="section">4. Database implementation</h1>
+<h2>4.1 Database creation and tables</h2>
+<p><b>RDBMS:</b> PostgreSQL 17 (managed by Supabase). The database is created from versioned SQL migrations (<code>db/migrations/001_core_schema.sql</code> … <code>012_normalize_and_procedures.sql</code>), bundled for one-click setup in <code>db/ALL_IN_ONE_SETUP.sql</code>.</p>
+<table>
+  <tr><th>Table</th><th>Columns</th><th>PK</th><th>FK</th><th>UNIQUE</th><th>CHECK</th><th>Indexes</th><th>RLS</th><th>Rows</th></tr>
+  <tr><td>users</td><td>9</td><td>1</td><td>0</td><td>2</td><td>0</td><td>7</td><td>on</td><td>21</td></tr>
+  <tr><td>doctor_profiles</td><td>6</td><td>1</td><td>1</td><td>1</td><td>2</td><td>2</td><td>on</td><td>10</td></tr>
+  <tr><td>patient_profiles</td><td>5</td><td>1</td><td>1</td><td>0</td><td>1</td><td>1</td><td>on</td><td>9</td></tr>
+  <tr><td>appointments</td><td>9</td><td>1</td><td>2</td><td>0</td><td>1</td><td>5</td><td>on</td><td>32</td></tr>
+  <tr><td>payments</td><td>10</td><td>1</td><td>1</td><td>2</td><td>2</td><td>4</td><td>on</td><td>11</td></tr>
+  <tr><td>prescriptions</td><td>6</td><td>1</td><td>3</td><td>0</td><td>1</td><td>4</td><td>on</td><td>10</td></tr>
+  <tr><td>prescription_items</td><td>7</td><td>1</td><td>1</td><td>1</td><td>3</td><td>2</td><td>on</td><td>14</td></tr>
+  <tr><td>medical_reports</td><td>10</td><td>1</td><td>3</td><td>0</td><td>1</td><td>5</td><td>on</td><td>11</td></tr>
+  <tr><td>ai_analyses</td><td>8</td><td>1</td><td>1</td><td>0</td><td>1</td><td>3</td><td>on</td><td>9</td></tr>
+  <tr><td>blockchain_transactions</td><td>11</td><td>1</td><td>2</td><td>1</td><td>1</td><td>5</td><td>on</td><td>21</td></tr>
+  <tr><td>notifications</td><td>6</td><td>1</td><td>1</td><td>0</td><td>0</td><td>3</td><td>on</td><td>66</td></tr>
+  <tr><td>audit_logs</td><td>7</td><td>1</td><td>1</td><td>0</td><td>0</td><td>4</td><td>on</td><td>128</td></tr>
+  <tr><td>auth_nonces</td><td>6</td><td>1</td><td>0</td><td>1</td><td>0</td><td>4</td><td>on</td><td>0</td></tr>
+</table>
+<p class="small">Counts read from the system catalogue of the live database (pg_constraint, pg_index, pg_class) on 29 Oct 2026.</p>
+<figure><img src="img/gh_07_migration012.jpg"><figcaption>Migration 012 on GitHub: creates <code>prescription_items</code>, drops the transitively dependent payment columns, adds the trigger, the stored procedure and the search indexes.</figcaption></figure>
+<div class="slot"><b>Screenshot to add: Supabase Table Editor</b>Supabase dashboard → Table Editor, showing the 13 tables in the <code>public</code> schema.</div>
+
+<h2>4.2 CRUD operations</h2>
+<p>Create, read, update and delete on a user account, run against the API (and through it, Prisma and the database). The account was created for this demonstration and deleted at the end.</p>
+
+<figure><img src="img/ev_api_1.jpg"><figcaption><b>Create</b>: register a patient.</figcaption></figure>
+<figure><img src="img/ev_api_3.jpg"><figcaption><b>Read</b>: the signed-in user.</figcaption></figure>
+<figure><img src="img/ev_api_4.jpg"><figcaption><b>Update</b>: save the health profile.</figcaption></figure>
+<figure><img src="img/ev_api_7.jpg"><figcaption><b>Update</b>: admin deactivates the account.</figcaption></figure>
+<figure><img src="img/ev_api_9.jpg"><figcaption><b>Delete</b>: admin deletes the account.</figcaption></figure>
+<figure><img src="img/ev_api_10.jpg"><figcaption><b>Read</b> after delete: the user is gone.</figcaption></figure>
+
+<p>The same operations exist for the other entities: appointments (create, read, update status), prescriptions (create via the stored procedure, read), reports (create, read), payments (create, read; refund by trigger), notifications (read, update), patient profiles (create/update, read).</p>
+
+<h2>4.3 Joins</h2>
+<figure><img src="img/ev_db_join_appointments.jpg"><figcaption>Five-table join: appointments ⋈ users (patient) ⋈ users (doctor) ⟕ doctor_profiles ⟕ payments.</figcaption></figure>
+<h2>4.4 Aggregate queries</h2>
+<figure><img src="img/ev_db_aggregate_revenue.jpg"><figcaption>COUNT, COUNT … FILTER and SUM per doctor with GROUP BY and HAVING.</figcaption></figure>
+<h2>4.5 Views</h2>
+<p>Five views: <code>v_patient_dashboard</code> and <code>v_doctor_dashboard</code> (joins behind the appointment lists), <code>v_report_with_analysis</code> (latest AI summary and anchor per report with LATERAL joins), <code>v_admin_analytics</code> (platform aggregates) and <code>v_doctor_weekly_load</code> (GROUP BY doctor and week).</p>
+
+<figure><img src="img/ev_db_views_list.jpg"><figcaption>The views in the database.</figcaption></figure>
+<figure><img src="img/ev_db_view_load.jpg"><figcaption><code>v_doctor_weekly_load</code> joined to doctor names.</figcaption></figure>
+
+<figure><img src="img/ev_db_view_admin.jpg"><figcaption><code>SELECT * FROM v_admin_analytics</code>: the figures behind the admin dashboard.</figcaption></figure>
+
+<h2>4.6 Transactions</h2>
+<p>Every change that touches more than one row runs in a single transaction through <code>prisma.$transaction</code>. The helper <code>withAuditUser()</code> opens the transaction and sets <code>app.current_user_id</code> so the audit trigger records who acted.</p>
+<table>
+  <tr><th style="width:24%">Operation</th><th>Steps that commit or roll back together</th></tr>
+  <tr><td>Doctor registration</td><td>INSERT users · INSERT doctor_profiles</td></tr>
+  <tr><td>Payment checkout</td><td><code>SELECT … FOR UPDATE</code> on the appointment · check status and existing payment · INSERT payment</td></tr>
+  <tr><td>Issue prescription</td><td>CALL sp_create_prescription (header + items) · read back</td></tr>
+  <tr><td>Deactivate user</td><td>INSERT notifications · UPDATE users · UPDATE appointments (refund trigger inside)</td></tr>
+  <tr><td>Delete doctor</td><td>INSERT notifications · DELETE users (cascades)</td></tr>
+  <tr><td>Change appointment status</td><td>ownership check · UPDATE (refund and notification triggers)</td></tr>
+</table>
+<figure><img src="img/ev_db_demo_atomicity.jpg"><figcaption>Atomicity: a prescription with one invalid medicine (0 days) fails the CHECK constraint, and the whole transaction, including the prescription header, is rolled back.</figcaption></figure>
+<figure><img src="img/gh_09_prisma_ts.jpg"><figcaption><code>backend/src/config/prisma.ts</code>: the Prisma client and the <code>withAuditUser</code> transaction helper.</figcaption></figure>
+<figure><img src="img/gh_10_payments_route.jpg"><figcaption><code>payments.routes.ts</code>: checkout transaction with a row lock (<code>FOR UPDATE</code>).</figcaption></figure>
+
+<h2>4.7 Stored procedure</h2>
+<p><code>sp_create_prescription(p_doctor_id, p_patient_id, p_appointment_id, p_notes, p_items jsonb, INOUT p_prescription_id)</code> validates the input (at least one medicine, an active patient), inserts the prescription and one <code>prescription_items</code> row per medicine, and returns the new id. The API calls it from <code>POST /api/prescriptions</code>.</p>
+<figure><img src="img/ev_db_procedures.jpg"><figcaption>The stored procedure and the database functions.</figcaption></figure>
+<figure><img src="img/ev_db_demo_procedure.jpg"><figcaption>Calling the procedure inside a transaction: it returns the new id and creates both medicine rows (rolled back after the demonstration).</figcaption></figure>
+
+<h2>4.8 Triggers</h2>
+<figure><img src="img/ev_db_triggers.jpg"><figcaption>The 13 triggers: <code>updated_at</code> maintenance, audit logging, notifications, role checks, refund on cancel, prescription/appointment consistency.</figcaption></figure>
+<figure><img src="img/ev_db_demo_trigger.jpg"><figcaption>Triggers in action: cancelling a paid appointment refunds the payment (<code>trg_refund_on_cancel</code>) and writes an audit row naming the acting admin (rolled back after the demonstration).</figcaption></figure>
+
+<h2>4.9 Indexes</h2>
+<p>Indexes cover every foreign key, every filter and sort column used by the API (status, dates, role) and the admin search (<code>pg_trgm</code> GIN on name and email), plus a partial index on unused sign-in nonces and an IVFFlat vector index (indexes screenshot in §3.5).</p>
+
+<h2>4.10 ORM integration (Prisma)</h2>
+<p>All table reads and writes go through Prisma models (<code>backend/prisma/schema.prisma</code>, one model per table, relations named after the ER relationships). Raw SQL is used only where the brief allows it: reading views, calling the stored procedure and the row lock, all through Prisma's parameterised <code>$queryRaw</code>. <code>supabase-js</code> is kept only for file storage and the Supabase Auth password check, which are not table queries.</p>
+<figure><img src="img/gh_08_schema_prisma.jpg"><figcaption><code>schema.prisma</code>: enums and models mapped to the tables.</figcaption></figure>
+<div class="slot"><b>Screenshot to add: Supabase SQL Editor</b>Supabase dashboard → SQL Editor, running for example <code>select * from v_admin_analytics;</code> and showing the result grid.</div>
+
+<!-- ============================== 5. APPLICATION ============================== -->
+<h1 class="section">5. Application development</h1>
+<p><b>Frontend:</b> Next.js 14 (React, TypeScript, Tailwind). <b>Backend:</b> Express.js 4 (TypeScript, Zod, Prisma).</p>
+<h2>5.1 Login page</h2>
+<figure><img src="img/app_02_register_validation.jpg" style="max-width:60%"><figcaption>Login/registration card with form validation: a short password is rejected with a clear message.</figcaption></figure>
+<h2>5.2 Dashboards</h2>
+<figure><img src="img/app_10_patient_top.jpg"><figcaption>Patient dashboard.</figcaption></figure>
+<figure><img src="img/app_20_doctor_top.jpg"><figcaption>Doctor dashboard.</figcaption></figure>
+<figure><img src="img/app_30_admin_top.jpg"><figcaption>Admin dashboard: live figures from <code>v_admin_analytics</code>.</figcaption></figure>
+<h2>5.3 CRUD in the user interface</h2>
+<figure><img src="img/app_18_profile_saved.jpg"><figcaption>Patient creates/updates their health profile; the saved values are read back.</figcaption></figure>
+<figure><img src="img/app_21_doctor_queue.jpg"><figcaption>Doctor reads the queue (with allergies) and updates appointments (Accept, Decline, Mark completed).</figcaption></figure>
+<figure><img src="img/app_36_delete_confirm.jpg" style="max-width:55%"><figcaption>Admin delete with typed confirmation, showing the linked records that will be removed.</figcaption></figure>
+<h2>5.4 Search</h2>
+<figure><img src="img/app_34_users_search.jpg"><figcaption>Server-side search: "neha" matches names and emails case-insensitively.</figcaption></figure>
+<h2>5.5 Filtering</h2>
+<figure><img src="img/app_35_doctors_active_filter.jpg"><figcaption>Admin: Doctors tab filtered to active accounts.</figcaption></figure>
+<figure><img src="img/app_12_booking_filter.jpg"><figcaption>Patient: doctors filtered by specialization (Cardiology).</figcaption></figure>
+<h2>5.6 Pagination</h2>
+<div class="grid2">
+<figure><img src="img/app_32_users_page1.jpg"><figcaption>Users, page 1 of 2 (8 per page).</figcaption></figure>
+<figure><img src="img/app_33_users_page2.jpg"><figcaption>Users, page 2 of 2.</figcaption></figure>
+</div>
+<figure><img src="img/ev_api_16.jpg"><figcaption>The API's pagination envelope: <code>items</code>, <code>total</code>, <code>page</code>, <code>page_size</code>, <code>total_pages</code>.</figcaption></figure>
+<h2>5.7 Form validation</h2>
+<p>Validation runs twice: in the browser (required fields, date and length limits) and on the server with Zod schemas.</p>
+<figure><img src="img/ev_api_11.jpg"><figcaption>Server-side validation: an invalid blood group and a future date of birth are rejected with field-level messages (HTTP 400).</figcaption></figure>
+<h2>5.8 Exception handling</h2>
+<p>A central error handler (<code>backend/src/middleware/errors.ts</code>) converts every failure into a clear JSON response instead of a crash: 400 for invalid input or a broken database rule, 401 for a missing or expired login, 403 for the wrong role, 404 for an unknown record, 409 for duplicates, 503 when the database is unreachable.</p>
+
+<figure><img src="img/ev_api_12.jpg"><figcaption>401: no token.</figcaption></figure>
+<figure><img src="img/ev_api_13.jpg"><figcaption>403: wrong role.</figcaption></figure>
+<figure><img src="img/ev_api_14.jpg"><figcaption>404: unknown record.</figcaption></figure>
+<figure><img src="img/ev_api_15.jpg"><figcaption>409: email already registered.</figcaption></figure>
+
+<h2>5.9 Responsive UI</h2>
+<figure class="mobile"><img src="img/app_19_patient_mobile.jpg"><figcaption>Patient dashboard at phone width (390 px): the layout stacks into one column.</figcaption></figure>
+
+<!-- ============================== 6. AUTH ============================== -->
+<h1 class="section">6. Authentication and role-based authorization</h1>
+<h2>6.1 Authentication (JWT)</h2>
+<table>
+  <tr><th style="width:26%">Requirement</th><th>Implementation</th></tr>
+  <tr><td>User login</td><td><code>POST /api/auth/login</code> checks the password with Supabase Auth, then issues a signed JWT (HS256, 12-hour expiry) carrying the user id and role</td></tr>
+  <tr><td>User logout</td><td>"Sign out" in the header removes the token from the browser; any 401 response also signs the user out automatically</td></tr>
+  <tr><td>Secure token handling</td><td>Token sent only in the <code>Authorization: Bearer</code> header; signature and expiry verified on every request; the account's <code>is_active</code> flag re-checked in the database on every request, so a deactivated user is refused at once (screenshot below)</td></tr>
+  <tr><td>Authenticated user info</td><td><code>GET /api/auth/me</code> returns the current user from the database</td></tr>
+</table>
+
+<figure><img src="img/ev_api_2.jpg"><figcaption>Login returns a JWT.</figcaption></figure>
+<figure><img src="img/ev_api_8.jpg"><figcaption>A deactivated account's token is refused.</figcaption></figure>
+
+<h2>6.2 Role-based authorization (RBAC)</h2>
+<table>
+  <tr><th style="width:26%">Requirement</th><th>Implementation</th></tr>
+  <tr><td>At least 2 roles</td><td>3 roles: patient, doctor, admin (enum <code>user_role</code>)</td></tr>
+  <tr><td>Single Users table</td><td>All users in <code>users</code> with a <code>role</code> column; no Admin/Doctor/Patient tables (screenshot below)</td></tr>
+  <tr><td>Role-based menu access</td><td>Each role has its own dashboard and header badge (Patient Portal, Doctor Portal, Admin Portal) with only that role's actions</td></tr>
+  <tr><td>Role-based page access</td><td><code>RoleGate</code> asks <code>/api/auth/me</code> before rendering a dashboard and redirects other roles (screenshots below)</td></tr>
+  <tr><td>Role-based API access</td><td><code>requireRole()</code> middleware on routes, and every Prisma query scoped to the signed-in user</td></tr>
+</table>
+<figure class="half"><img src="img/ev_db_users_roles.jpg"><figcaption>One <code>users</code> table, three roles.</figcaption></figure>
+<div class="grid2">
+<figure><img src="img/app_40_rolegate_checking.jpg"><figcaption>A patient who edited their stored role to "admin" opens <code>/admin</code>: the page first checks with the server…</figcaption></figure>
+<figure><img src="img/app_41_rolegate_redirected.jpg"><figcaption>…and sends them to <code>/patient</code>; the admin page never renders.</figcaption></figure>
+</div>
+<figure><img src="img/ev_api_13.jpg" style="max-width:70%"><figcaption>Role-based API access: a patient calling an admin endpoint gets 403.</figcaption></figure>
+
+<!-- ============================== 7. SECURITY ============================== -->
+<h1 class="section">7. Database security</h1>
+<table>
+  <tr><th style="width:24%">Requirement</th><th>Implementation</th></tr>
+  <tr><td>Password hashing (BCrypt)</td><td>Email passwords are stored by Supabase Auth (GoTrue) as bcrypt hashes in <code>auth.users</code>; the API never stores, logs or returns a password</td></tr>
+  <tr><td>SQL injection prevention</td><td>Prisma ORM sends every value as a bind parameter; raw queries use Prisma tagged templates (<code>$queryRaw`… ${value}`</code>), which also bind values. No SQL is built by string concatenation of user input.</td></tr>
+  <tr><td>Secrets in .env</td><td><code>DATABASE_URL</code>, <code>JWT_SECRET</code>, Supabase keys and the signer key are read with dotenv from <code>backend/.env</code>; only <code>.env.example</code> templates are in git</td></tr>
+  <tr><td>Nothing hard-coded</td><td>No database password, API key or JWT secret appears in the source code</td></tr>
+  <tr><td>Extra: row-level security</td><td>RLS enabled on all 13 tables with per-user policies, as a second layer for any client using a user token</td></tr>
+</table>
+<figure><img src="img/gh_11_gitignore.jpg"><figcaption><code>.gitignore</code>: every <code>.env</code> variant and database backups are excluded from version control.</figcaption></figure>
+<figure><img src="img/ev_db_rls.jpg"><figcaption>Row-level security policies on the tables.</figcaption></figure>
+
+<!-- ============================== 8. BACKUP ============================== -->
+<h1 class="section">8. Database backup and recovery</h1>
+<p>Backups use PostgreSQL's native tools. <code>scripts/db-backup.sh</code> runs <code>pg_dump</code> (custom format, compressed, <code>public</code> schema: tables, data, constraints, indexes, views, functions, the procedure, triggers and RLS policies). <code>scripts/db-restore.sh</code> runs <code>pg_restore --clean --if-exists --single-transaction</code>, so a failed restore leaves the target unchanged. Both read <code>DATABASE_URL</code> from <code>backend/.env</code> and fall back to the <code>postgres:17-alpine</code> Docker image if the tools are not installed. Backups are git-ignored because they contain real data.</p>
+<pre>bash scripts/db-backup.sh                       # -> backups/elixor_&lt;timestamp&gt;.dump
+pg_restore --list backups/elixor_&lt;timestamp&gt;.dump  # inspect the contents
+RESTORE_URL=&lt;scratch database&gt; bash scripts/db-restore.sh backups/elixor_&lt;timestamp&gt;.dump</pre>
+<div class="slot"><b>Screenshot to add: backup run</b>Terminal output of <code>bash scripts/db-backup.sh</code> showing the written <code>.dump</code> file and its size (needs Docker Desktop or the PostgreSQL 17 command-line tools).</div>
+<div class="slot"><b>Screenshot to add: restore run</b>Terminal output of <code>pg_restore --list</code> and of a restore into a scratch database.</div>
+
+<!-- ============================== 9. VCS ============================== -->
+<h1 class="section">9. Version control</h1>
+<table>
+  <tr><th style="width:30%">Requirement</th><th>Status</th></tr>
+  <tr><td>Repository on GitHub, public for review</td><td>https://github.com/Zageraus/Elixo (public) <span class="tag">met</span></td></tr>
+  <tr><td>All team members as collaborators</td><td><span class="ph">[add each member under Settings → Collaborators]</span></td></tr>
+  <tr><td>Minimum 10 meaningful commits</td><td>38 commits <span class="tag">met</span></td></tr>
+  <tr><td>Minimum 2 branches (main, dev)</td><td><code>main</code> and <code>dev</code> <span class="tag">met</span></td></tr>
+  <tr><td>Pull requests (recommended)</td><td>PR #1 <code>healthchain-upgrade → main</code>, merged 18 Oct 2026 (commit <code>ba54fd3</code>)</td></tr>
+  <tr><td>README with description, installation, stack, execution</td><td>https://github.com/Zageraus/Elixo#readme <span class="tag">met</span></td></tr>
+  <tr><td>Secrets excluded via .gitignore, none in code</td><td>See the .gitignore screenshot in §7 <span class="tag">met</span></td></tr>
+</table>
+<figure><img src="img/gh_02_branches.jpg"><figcaption>Branches on GitHub: <code>main</code> and <code>dev</code>.</figcaption></figure>
+<figure><img src="img/gh_03_commits_main.jpg"><figcaption>Commit history on <code>main</code>, with descriptive messages.</figcaption></figure>
+
+<!-- ============================== 10. DEPLOYMENT ============================== -->
+<h1 class="section">10. Deployment</h1>
+<p>The deployment is prepared and the container images build successfully in CI; the public hosting step is still to be done.</p>
+<table>
+  <tr><th style="width:22%">Part</th><th>Platform</th><th>Configuration</th><th style="width:16%">Status</th></tr>
+  <tr><td>Database</td><td>Supabase (managed PostgreSQL)</td><td>Project <code>healthchain</code>, region ap-southeast-1</td><td><span class="tag">live</span></td></tr>
+  <tr><td>Backend API</td><td>Render (Docker)</td><td><code>render.yaml</code>, <code>backend/Dockerfile</code></td><td><span class="tag todo">to deploy</span></td></tr>
+  <tr><td>Frontend</td><td>Vercel</td><td>Root <code>frontend</code>, env <code>NEXT_PUBLIC_API_URL</code></td><td><span class="tag todo">to deploy</span></td></tr>
+  <tr><td>Images</td><td>Docker Hub</td><td>CI pushes from <code>main</code> once the secrets are set</td><td><span class="tag todo">to push</span></td></tr>
+</table>
+<p><b>Live URL:</b> <span class="ph">[add after deploying]</span></p>
+<div class="slot"><b>Screenshot to add: deployed application</b>The ELIXOR login page opened at the Vercel URL, and the Render dashboard showing the API service as live.</div>
+
+<!-- ============================== 11. BONUS ============================== -->
+<h1 class="section">11. Bonus features</h1>
+<table>
+  <tr><th style="width:30%">Bonus item</th><th>Evidence</th><th style="width:12%"></th></tr>
+  <tr><td>CI/CD with GitHub Actions</td><td><code>.github/workflows/ci.yml</code>: Prisma schema validation, typecheck and production build of backend and frontend, smart-contract tests, Docker image builds (push to Docker Hub from <code>main</code>)</td><td><span class="tag">done</span></td></tr>
+  <tr><td>Custom domain</td><td>—</td><td><span class="tag todo">not done</span></td></tr>
+  <tr><td>Industry best practices</td><td>Managed cloud database (Supabase PostgreSQL) · audit logging by triggers with the acting user · automated tests in CI (Hardhat contract tests, 35-check API test) · performance indexes (trigram search, partial and composite indexes) · row-level security</td><td><span class="tag">done</span></td></tr>
+</table>
+<figure><img src="img/gh_06_ci_run.jpg"><figcaption>A CI run on GitHub Actions: all four jobs passed in 2 min 23 s.</figcaption></figure>
+<figure><img src="img/gh_05_actions.jpg"><figcaption>CI history: every push to <code>main</code> and <code>dev</code> is checked.</figcaption></figure>
+
+<!-- ============================== 12. WALKTHROUGH ============================== -->
+<h1 class="section">12. Project execution walkthrough</h1>
+<p>One complete flow through the system, showing the input, the processing and the output at each step.</p>
+<h2>Step 1 — Patient finds a doctor and requests a visit</h2>
+<p><b>Input:</b> specialization filter, doctor, date/time, reason. <b>Processing:</b> <code>POST /api/appointments</code> → JWT and role check → Zod validation (future date) → transaction → INSERT appointment → trigger notifies the doctor and writes the audit log. <b>Output:</b> the request appears with status "requested".</p>
+<figure><img src="img/app_12_booking_filter.jpg"><figcaption>Booking form, doctors filtered by specialization.</figcaption></figure>
+<h2>Step 2 — Doctor sees the request and the patient's allergies</h2>
+<p><b>Input:</b> doctor opens the dashboard. <b>Processing:</b> <code>GET /api/appointments</code> reads <code>v_doctor_dashboard</code> filtered to the doctor, joins payments and allergies. <b>Output:</b> the queue with Accept/Decline buttons and allergy warnings.</p>
+<figure><img src="img/app_21_doctor_queue.jpg"><figcaption>Doctor's queue.</figcaption></figure>
+<h2>Step 3 — Doctor writes a prescription</h2>
+<p><b>Input:</b> patient, medicines, notes. <b>Processing:</b> <code>POST /api/prescriptions</code> → transaction → <code>CALL sp_create_prescription</code> → triggers (consistency check, audit, notification) → commit → SHA-256 fingerprint anchored on the blockchain. <b>Output:</b> the prescription is listed for doctor and patient.</p>
+<figure><img src="img/app_22_prescription_form.jpg"><figcaption>Prescription form with the allergy warning.</figcaption></figure>
+<h2>Step 4 — Patient sees the prescription and pays</h2>
+<p><b>Input:</b> patient chooses a payment method. <b>Processing:</b> <code>POST /api/payments</code> → transaction with <code>SELECT … FOR UPDATE</code> → status and duplicate checks → INSERT payment (amount taken from the doctor's fee on the server). <b>Output:</b> receipt; the appointment shows "Paid".</p>
+<figure><img src="img/app_14_patient_prescriptions.jpg"><figcaption>Patient's prescriptions (paged), each with its medicines and anchoring status.</figcaption></figure>
+<figure><img src="img/app_17_checkout.jpg" style="max-width:52%"><figcaption>Simulated checkout (no real money, no card details collected).</figcaption></figure>
+<h2>Step 5 — Patient uploads a report</h2>
+<p><b>Input:</b> title, category, file, optional text. <b>Processing:</b> file stored in a private bucket, SHA-256 hash saved with the report, text summarised by the local AI model, hash anchored on-chain. <b>Output:</b> the report card with its AI summary and a "View PDF" link.</p>
+<figure><img src="img/app_15_patient_reports.jpg"><figcaption>Reports with AI summaries and paging.</figcaption></figure>
+<figure><img src="img/app_16_upload_form.jpg"><figcaption>Report upload form.</figcaption></figure>
+<h2>Step 6 — Admin monitors the platform</h2>
+<p><b>Input:</b> admin opens the dashboard. <b>Processing:</b> <code>GET /api/admin/analytics</code> reads <code>v_admin_analytics</code>; <code>GET /api/admin/doctor-load</code> reads <code>v_doctor_weekly_load</code>. <b>Output:</b> live figures, the weekly load chart and user management.</p>
+<figure><img src="img/app_31_admin_full.jpg" style="max-width:62%"><figcaption>The full admin dashboard.</figcaption></figure>
+
+<!-- ============================== 13. IMPROVEMENTS ============================== -->
+<h1 class="section">13. Improvements</h1>
+<p><b>First review held on:</b> <span class="ph">[DD Month 2026]</span>. The following changes were made after it, each traceable to a commit on GitHub (https://github.com/Zageraus/Elixo/commit/&lt;ID&gt;).</p>
+{{IMPROVEMENTS}}
+<figure><img src="img/gh_04_commits_dev.jpg"><figcaption>The improvement commits on the <code>dev</code> branch.</figcaption></figure>
+<p>Before and after, in short:</p>
+<table>
+  <tr><th style="width:22%">Area</th><th>Before</th><th>After</th></tr>
+  <tr><td>ORM</td><td>Queries through the supabase-js query builder</td><td>Every table query through Prisma ORM</td></tr>
+  <tr><td>Normalization</td><td>Medicines in a JSON array; payments stored patient and doctor</td><td><code>prescription_items</code> table; transitive columns removed (BCNF)</td></tr>
+  <tr><td>Stored procedure</td><td>None</td><td><code>sp_create_prescription</code></td></tr>
+  <tr><td>Transactions</td><td>Multi-step writes as separate requests, manual clean-up on failure</td><td>Six operations in <code>prisma.$transaction</code>, with a row lock for payments</td></tr>
+  <tr><td>Audit trail</td><td>Audit rows had no acting user</td><td>Acting user recorded through <code>app.current_user_id</code></td></tr>
+  <tr><td>Pagination, search, filter</td><td>Client-side search only; no paging</td><td>Server-side search, status filter and paging; trigram indexes</td></tr>
+  <tr><td>Page access</td><td>Only the patient page checked the role, from browser storage</td><td><code>RoleGate</code> on every dashboard, checked with <code>GET /api/auth/me</code></td></tr>
+  <tr><td>Error handling</td><td>Generic 500 errors</td><td>Central handler with 400/401/403/404/409/503</td></tr>
+  <tr><td>DevOps</td><td>No Docker, CI, backup scripts or design documents</td><td>Dockerfiles, compose, CI, backup/restore scripts, design and proposal documents</td></tr>
+</table>
+
+<!-- ============================== 14. COMMITS ============================== -->
+<h1 class="section">14. Team commit history</h1>
+<p>Every commit in the repository, oldest first, as recorded by git (verifiable at https://github.com/Zageraus/Elixo/commits/main and <code>/commits/dev</code>). The GitHub ID is the commit author.</p>
+{{COMMIT_SUMMARY}}
+<table class="commits">
+  <tr><th style="width:11%">Member</th><th style="width:11%">Reg. No</th><th style="width:11%">GitHub ID</th><th style="width:12%">Branch</th><th style="width:8%">Commit ID</th><th style="width:11%">Date</th><th>Commit message</th></tr>
+  {{COMMITS}}
+</table>
+
+<!-- ============================== 15. CHECKLIST ============================== -->
+<h1 class="section">15. Marks checklist</h1>
+<table>
+  <tr><th style="width:5%">#</th><th style="width:26%">Section (marks)</th><th>Where in this report</th><th style="width:14%">Status</th></tr>
+  <tr><td>1</td><td>Problem statement and planning (2)</td><td>§1, §2, Gantt chart</td><td><span class="tag todo">add names</span></td></tr>
+  <tr><td>2</td><td>Database design (6)</td><td>§3: ER diagram, schema, keys, constraints, 3NF/BCNF, indexes</td><td><span class="tag">done</span></td></tr>
+  <tr><td>3</td><td>Database implementation (8)</td><td>§4: creation, 13 tables, CRUD, joins, aggregates, views, transactions, procedure, triggers, ORM</td><td><span class="tag">done</span></td></tr>
+  <tr><td>4</td><td>Application development (4)</td><td>§5: framework app, dashboards, search, filtering, pagination, validation, exceptions, responsive</td><td><span class="tag">done</span></td></tr>
+  <tr><td>5</td><td>Authentication, authorization, security (5)</td><td>§6, §7: JWT, RBAC on one Users table, bcrypt, injection safety, secrets</td><td><span class="tag">done</span></td></tr>
+  <tr><td>6</td><td>Professional practices (5)</td><td>§8–§10: GitHub, branches, .gitignore, backup/restore, Docker, deployment</td><td><span class="tag todo">backup, deploy</span></td></tr>
+  <tr><td>+</td><td>Bonus (up to 3)</td><td>§11: CI/CD, managed DB, audit logging, automated tests</td><td><span class="tag">2 of 3</span></td></tr>
+</table>
+<p class="small">Declaration: this report describes the team's own implementation. Every component shown can be explained and demonstrated by the team members listed on the first page.</p>
+
+</body>
+</html>

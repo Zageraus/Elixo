@@ -1,0 +1,261 @@
+[
+  {
+    "label": "Health check (API + database)",
+    "request": "GET /health",
+    "body": null,
+    "status": 200,
+    "response": {
+      "status": "ok",
+      "service": "healthchain-backend",
+      "database": "ok"
+    }
+  },
+  {
+    "label": "CREATE: register a patient (users row via Prisma, bcrypt hash in Supabase Auth)",
+    "request": "POST /api/auth/register",
+    "body": "{\"email\":\"crud.demo.1793288827949@example.com\",\"password\":\"••••••••••\",\"full_name\":\"CRUD Demo Patient\",\"role\":\"patient\"}",
+    "status": 201,
+    "response": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5…(JWT)",
+      "user": {
+        "id": "eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+        "role": "patient",
+        "full_name": "CRUD Demo Patient",
+        "email": "crud.demo.1793288827949@example.com",
+        "wallet_address": ""
+      }
+    }
+  },
+  {
+    "label": "Login with email + password -> JWT",
+    "request": "POST /api/auth/login",
+    "body": "{\"email\":\"crud.demo.1793288827949@example.com\",\"password\":\"••••••••••\"}",
+    "status": 200,
+    "response": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5…(JWT)",
+      "user": {
+        "id": "eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+        "role": "patient",
+        "full_name": "CRUD Demo Patient",
+        "email": "crud.demo.1793288827949@example.com",
+        "wallet_address": ""
+      }
+    }
+  },
+  {
+    "label": "READ: GET /api/auth/me (who is logged in)",
+    "request": "GET /api/auth/me",
+    "body": null,
+    "status": 200,
+    "response": {
+      "id": "eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+      "role": "patient",
+      "full_name": "CRUD Demo Patient",
+      "email": "crud.demo.1793288827949@example.com",
+      "phone": null,
+      "is_active": true,
+      "created_at": "2026-10-29T15:47:09.617Z",
+      "wallet_address": "",
+      "doctor_profile": null
+    }
+  },
+  {
+    "label": "UPDATE: save the health profile",
+    "request": "PUT /api/patients/me/profile",
+    "body": "{\"date_of_birth\":\"2004-05-17\",\"blood_group\":\"B+\",\"allergies\":\"Dust, sulfa drugs\",\"emergency_contact\":\"Parent 9800000000\"}",
+    "status": 200,
+    "response": {
+      "date_of_birth": "2004-05-17",
+      "blood_group": "B+",
+      "allergies": "Dust, sulfa drugs",
+      "emergency_contact": "Parent 9800000000"
+    }
+  },
+  {
+    "label": "READ: health profile",
+    "request": "GET /api/patients/me/profile",
+    "body": null,
+    "status": 200,
+    "response": {
+      "date_of_birth": "2004-05-17",
+      "blood_group": "B+",
+      "allergies": "Dust, sulfa drugs",
+      "emergency_contact": "Parent 9800000000"
+    }
+  },
+  {
+    "label": "SEARCH + FILTER + PAGINATION (admin)",
+    "request": "GET /api/admin/users?role=patient&q=crud%20demo&status=all&page=1&page_size=5",
+    "body": null,
+    "status": 200,
+    "response": {
+      "items": [
+        {
+          "id": "eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+          "full_name": "CRUD Demo Patient",
+          "email": "crud.demo.1793288827949@example.com",
+          "role": "patient",
+          "is_active": true,
+          "created_at": "2026-10-29T15:47:09.617Z",
+          "specialization": null,
+          "appointment_count": 0,
+          "prescription_count": 0,
+          "report_count": 0,
+          "payment_count": 0
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "page_size": 5,
+      "total_pages": 1,
+      "role_totals": {
+        "patient": 1,
+        "doctor": 0
+      }
+    }
+  },
+  {
+    "label": "UPDATE: admin deactivates the account (transaction)",
+    "request": "PATCH /api/admin/users/eb0c8807-df9f-46a9-b299-b54e62b6afc5/active",
+    "body": "{\"is_active\":false}",
+    "status": 200,
+    "response": {
+      "id": "eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+      "is_active": false,
+      "cancelled_appointments": 0,
+      "patients_notified": 0
+    }
+  },
+  {
+    "label": "Deactivated account is refused at once",
+    "request": "GET /api/auth/me",
+    "body": null,
+    "status": 401,
+    "response": {
+      "error": "This account has been deactivated or removed."
+    }
+  },
+  {
+    "label": "DELETE: admin deletes the account (cascade + Auth login removed)",
+    "request": "DELETE /api/admin/users/eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+    "body": null,
+    "status": 200,
+    "response": {
+      "id": "eb0c8807-df9f-46a9-b299-b54e62b6afc5",
+      "deleted": true,
+      "patients_notified": 0
+    }
+  },
+  {
+    "label": "READ after delete",
+    "request": "GET /api/admin/users?role=patient&q=crud%20demo",
+    "body": null,
+    "status": 200,
+    "response": {
+      "items": [],
+      "total": 0,
+      "page": 1,
+      "page_size": 10,
+      "total_pages": 1,
+      "role_totals": {
+        "patient": 0,
+        "doctor": 0
+      }
+    }
+  },
+  {
+    "label": "400 validation: bad blood group and future date",
+    "request": "PUT /api/patients/me/profile",
+    "body": "{\"blood_group\":\"Z+\",\"date_of_birth\":\"2099-01-01\"}",
+    "status": 400,
+    "response": {
+      "error": {
+        "formErrors": [],
+        "fieldErrors": {
+          "date_of_birth": [
+            "Date of birth must be in the past."
+          ],
+          "blood_group": [
+            "Invalid enum value. Expected 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-', received 'Z+'"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "label": "401: no token",
+    "request": "GET /api/prescriptions",
+    "body": null,
+    "status": 401,
+    "response": {
+      "error": "Missing bearer token"
+    }
+  },
+  {
+    "label": "403: patient calls an admin API",
+    "request": "GET /api/admin/users?role=patient",
+    "body": null,
+    "status": 403,
+    "response": {
+      "error": "Insufficient role"
+    }
+  },
+  {
+    "label": "404: unknown record id",
+    "request": "GET /api/reports/00000000-0000-0000-0000-000000000000",
+    "body": null,
+    "status": 404,
+    "response": {
+      "error": "Not found or not authorized"
+    }
+  },
+  {
+    "label": "409: email already registered",
+    "request": "POST /api/auth/register",
+    "body": "{\"email\":\"chitra@healthchain.dev\",\"password\":\"••••••••••\",\"full_name\":\"Duplicate\",\"role\":\"patient\"}",
+    "status": 409,
+    "response": {
+      "error": "An account with this email already exists. Please log in."
+    }
+  },
+  {
+    "label": "Pagination envelope: prescriptions page 1",
+    "request": "GET /api/prescriptions?page=1&page_size=1",
+    "body": null,
+    "status": 200,
+    "response": {
+      "items": [
+        {
+          "id": "f6cc65fa-8597-441b-a474-1640f8a7567c",
+          "appointment_id": "55555555-5555-5555-5555-555555555555",
+          "patient_id": "33333333-3333-3333-3333-333333333333",
+          "doctor_id": "22222222-2222-2222-2222-222222222222",
+          "notes": "Recheck lipid panel in 3 months; low-cholesterol diet advised.",
+          "issued_at": "2026-10-20T06:28:45.067Z",
+          "blockchain_transactions": [
+            {
+              "tx_hash": "0xddb46538cc42572de9c83c43d4d81d8d832ad1514369c88e651ce470c04faffc",
+              "status": "confirmed",
+              "block_number": 13,
+              "chain": "hardhat-local"
+            }
+          ],
+          "medications": [
+            {
+              "name": "Atorvastatin",
+              "dosage": "10mg",
+              "frequency": "once daily",
+              "duration_days": 90
+            }
+          ],
+          "patient_name": "Chitra Menon",
+          "doctor_name": "Dr. Bob Rao"
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 1
+    }
+  }
+]

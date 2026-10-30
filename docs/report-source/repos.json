@@ -1,0 +1,273 @@
+{
+ "Zageraus/Healthcare": {
+  "created_at": "2026-09-22T07:08:03Z",
+  "default_branch": "main",
+  "fork": false,
+  "parent": null,
+  "branches": [],
+  "commits": []
+ },
+ "Arnahhh/HealthChain-Finalised": {
+  "created_at": "2026-10-16T15:20:52Z",
+  "default_branch": "main",
+  "fork": false,
+  "parent": null,
+  "branches": [
+   "main"
+  ],
+  "commits": [
+   {
+    "sha": "f4548fd682d50127d325179f07b2e05887eb0005",
+    "branch": "main",
+    "author": "Arna",
+    "email": "your_actual_github_email@gmail.com",
+    "login": null,
+    "date": "2026-10-16T15:27:50Z",
+    "message": "Initial HealthChain project upload",
+    "parents": 0
+   }
+  ]
+ },
+ "Arnahhh/HealthChain-AI-and-BlockChain-integrated-": {
+  "created_at": "2026-10-19T17:04:23Z",
+  "default_branch": "main",
+  "fork": false,
+  "parent": null,
+  "branches": [
+   "main"
+  ],
+  "commits": [
+   {
+    "sha": "ff5fd13e20490cc551f248de4a3d39c3e30688ed",
+    "branch": "main",
+    "author": "Arnahhh",
+    "email": "arnaadhikari2006@gmail.com",
+    "login": "Arnahhh",
+    "date": "2026-10-19T17:07:17Z",
+    "message": "Add local development files",
+    "parents": 1
+   },
+   {
+    "sha": "ba54fd3440bbe9086e08aa36126e9365402d440e",
+    "branch": "main",
+    "author": "Arna Adhikari",
+    "email": "arnaadhikari2006@gmail.com",
+    "login": "Arnahhh",
+    "date": "2026-10-17T19:03:36Z",
+    "message": "Merge pull request #1 from Zageraus/healthchain-upgrade",
+    "parents": 2
+   },
+   {
+    "sha": "d534716118572a7bb64017f81c247e08b3476073",
+    "branch": "main",
+    "author": "Arna",
+    "email": "your_actual_github_email@gmail.com",
+    "login": null,
+    "date": "2026-10-17T18:56:31Z",
+    "message": "Upgrade HealthChain AI and blockchain integration",
+    "parents": 1
+   },
+   {
+    "sha": "bbedab821ffacf38014cc02792a6cb418c992324",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-13T06:58:13Z",
+    "message": "feat(auth): implement admin setup passcode check for admin role registration",
+    "parents": 1
+   },
+   {
+    "sha": "5d09f0cfebea64c58fb2f2690f90555e67d5722f",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-13T06:40:17Z",
+    "message": "feat(frontend): implement doctor prescription issuance form and patient prescription viewer",
+    "parents": 1
+   },
+   {
+    "sha": "8dda7ab37786a45713f889274545693413649ad6",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-13T06:27:59Z",
+    "message": "docs: overhaul README with architecture diagrams, DBMS details, and API reference",
+    "parents": 1
+   },
+   {
+    "sha": "c41eb123d2ebf93d1e7084bee40d3acc9c13ba86",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-11T08:46:19Z",
+    "message": "Update HealthChain codebase with full full-stack architecture, contracts, and AI service",
+    "parents": 1
+   },
+   {
+    "sha": "b11eb92615ec2d554f610d913db37e33b8719304",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-11T08:41:50Z",
+    "message": "Delete healthchain.zip",
+    "parents": 1
+   },
+   {
+    "sha": "705efb5659c318988434e669ac77afc19f56c2a7",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-06T07:30:07Z",
+    "message": "Add healthchain.zip archive",
+    "parents": 1
+   },
+   {
+    "sha": "2f0ea0f05d7caea96ae69c5dd808071aa1d48642",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-06T07:19:02Z",
+    "message": "Initial commit: HealthChain platform",
+    "parents": 0
+   }
+  ]
+ },
+ "Arnahhh/Elixor-update": {
+  "created_at": "2026-10-20T19:06:38Z",
+  "default_branch": "main",
+  "fork": false,
+  "parent": null,
+  "branches": [
+   "main"
+  ],
+  "commits": [
+   {
+    "sha": "8abbccfaff46592a2b1bd543e24c425c1e46118e",
+    "branch": "main",
+    "author": "Arnahhh",
+    "email": "arnaadhikari2006@gmail.com",
+    "login": "Arnahhh",
+    "date": "2026-10-20T19:11:28Z",
+    "message": "Prepare ELIXOR project update",
+    "parents": 1
+   },
+   {
+    "sha": "224db020c5a23e577b86a794bed9210fb108ebee",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-20T07:29:09Z",
+    "message": "Improve Elixor frontend and application",
+    "parents": 1
+   },
+   {
+    "sha": "ff5fd13e20490cc551f248de4a3d39c3e30688ed",
+    "branch": "main",
+    "author": "Arnahhh",
+    "email": "arnaadhikari2006@gmail.com",
+    "login": "Arnahhh",
+    "date": "2026-10-19T17:07:17Z",
+    "message": "Add local development files",
+    "parents": 1
+   },
+   {
+    "sha": "ba54fd3440bbe9086e08aa36126e9365402d440e",
+    "branch": "main",
+    "author": "Arna Adhikari",
+    "email": "arnaadhikari2006@gmail.com",
+    "login": "Arnahhh",
+    "date": "2026-10-17T19:03:36Z",
+    "message": "Merge pull request #1 from Zageraus/healthchain-upgrade",
+    "parents": 2
+   },
+   {
+    "sha": "d534716118572a7bb64017f81c247e08b3476073",
+    "branch": "main",
+    "author": "Arna",
+    "email": "your_actual_github_email@gmail.com",
+    "login": null,
+    "date": "2026-10-17T18:56:31Z",
+    "message": "Upgrade HealthChain AI and blockchain integration",
+    "parents": 1
+   },
+   {
+    "sha": "bbedab821ffacf38014cc02792a6cb418c992324",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-13T06:58:13Z",
+    "message": "feat(auth): implement admin setup passcode check for admin role registration",
+    "parents": 1
+   },
+   {
+    "sha": "5d09f0cfebea64c58fb2f2690f90555e67d5722f",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-13T06:40:17Z",
+    "message": "feat(frontend): implement doctor prescription issuance form and patient prescription viewer",
+    "parents": 1
+   },
+   {
+    "sha": "8dda7ab37786a45713f889274545693413649ad6",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-13T06:27:59Z",
+    "message": "docs: overhaul README with architecture diagrams, DBMS details, and API reference",
+    "parents": 1
+   },
+   {
+    "sha": "c41eb123d2ebf93d1e7084bee40d3acc9c13ba86",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-11T08:46:19Z",
+    "message": "Update HealthChain codebase with full full-stack architecture, contracts, and AI service",
+    "parents": 1
+   },
+   {
+    "sha": "b11eb92615ec2d554f610d913db37e33b8719304",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-11T08:41:50Z",
+    "message": "Delete healthchain.zip",
+    "parents": 1
+   },
+   {
+    "sha": "705efb5659c318988434e669ac77afc19f56c2a7",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-06T07:30:07Z",
+    "message": "Add healthchain.zip archive",
+    "parents": 1
+   },
+   {
+    "sha": "2f0ea0f05d7caea96ae69c5dd808071aa1d48642",
+    "branch": "main",
+    "author": "Zageraus",
+    "email": "ssanidhya886@gmail.com",
+    "login": "Zageraus",
+    "date": "2026-10-06T07:19:02Z",
+    "message": "Initial commit: HealthChain platform",
+    "parents": 0
+   }
+  ]
+ }
+}

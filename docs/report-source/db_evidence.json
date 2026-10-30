@@ -1,0 +1,1096 @@
+{
+  "users_roles": {
+    "title": "Single users table, role column",
+    "sql": "select role::text as role, count(*) as users, count(*) filter (where is_active) as active from users group by role order by role",
+    "rows": [
+      {
+        "role": "admin",
+        "users": 1,
+        "active": 1
+      },
+      {
+        "role": "doctor",
+        "users": 10,
+        "active": 10
+      },
+      {
+        "role": "patient",
+        "users": 10,
+        "active": 10
+      }
+    ]
+  },
+  "join_appointments": {
+    "title": "JOIN: appointments with patient, doctor, specialization and payment",
+    "sql": "select p.full_name as patient, d.full_name as doctor, dp.specialization, to_char(a.scheduled_at at time zone 'Asia/Kolkata','DD Mon YYYY HH24:MI') as scheduled_ist, a.status::text as status, coalesce(pay.status::text, '-') as payment from appointments a join users p on p.id = a.patient_id join users d on d.id = a.doctor_id left join doctor_profiles dp on dp.user_id = d.id left join payments pay on pay.appointment_id = a.id where a.scheduled_at between '2026-09-01' and '2026-12-31' order by a.scheduled_at desc limit 8",
+    "rows": [
+      {
+        "patient": "Arna Adhikari 24BDS0363",
+        "doctor": "Dr. Ananya Iyer",
+        "specialization": "Dermatology",
+        "scheduled_ist": "12 Dec 2026 12:12",
+        "status": "requested",
+        "payment": "-"
+      },
+      {
+        "patient": "Arna Adhikari 24BDS0363",
+        "doctor": "Dr. Ananya Iyer",
+        "specialization": "Dermatology",
+        "scheduled_ist": "07 Nov 2026 16:15",
+        "status": "requested",
+        "payment": "-"
+      },
+      {
+        "patient": "Arna Adhikari 24BDS0363",
+        "doctor": "Sanidhya Srivastava",
+        "specialization": "General Medicine",
+        "scheduled_ist": "07 Nov 2026 16:13",
+        "status": "requested",
+        "payment": "-"
+      },
+      {
+        "patient": "Arna Adhikari 24BDS0363",
+        "doctor": "Dr. Ananya Iyer",
+        "specialization": "Dermatology",
+        "scheduled_ist": "07 Nov 2026 16:13",
+        "status": "requested",
+        "payment": "-"
+      },
+      {
+        "patient": "Sneha Kulkarni",
+        "doctor": "Dr. Kavya Reddy",
+        "specialization": "Gynecology & Obstetrics",
+        "scheduled_ist": "05 Nov 2026 10:00",
+        "status": "confirmed",
+        "payment": "paid"
+      },
+      {
+        "patient": "Chitra Menon",
+        "doctor": "Dr. Priya Sharma",
+        "specialization": "Pediatrics",
+        "scheduled_ist": "04 Nov 2026 15:30",
+        "status": "requested",
+        "payment": "-"
+      },
+      {
+        "patient": "Aarav Patel",
+        "doctor": "Dr. Rohan Mehta",
+        "specialization": "Orthopedics",
+        "scheduled_ist": "03 Nov 2026 16:00",
+        "status": "requested",
+        "payment": "-"
+      },
+      {
+        "patient": "Ishita Banerjee",
+        "doctor": "Sanidhya Srivastava",
+        "specialization": "General Medicine",
+        "scheduled_ist": "02 Nov 2026 09:30",
+        "status": "requested",
+        "payment": "-"
+      }
+    ]
+  },
+  "aggregate_revenue": {
+    "title": "AGGREGATE: revenue and visits per doctor (GROUP BY ... HAVING)",
+    "sql": "select d.full_name as doctor, dp.specialization, count(a.id) as appointments, count(*) filter (where a.status = 'completed') as completed, coalesce(sum(pay.amount) filter (where pay.status = 'paid'), 0) as revenue_inr from users d join doctor_profiles dp on dp.user_id = d.id join appointments a on a.doctor_id = d.id left join payments pay on pay.appointment_id = a.id group by d.full_name, dp.specialization having count(a.id) >= 2 order by revenue_inr desc, appointments desc",
+    "rows": [
+      {
+        "doctor": "Dr. Meera Joshi",
+        "specialization": "Psychiatry",
+        "appointments": 2,
+        "completed": 1,
+        "revenue_inr": 2600
+      },
+      {
+        "doctor": "Dr. Vikram Singh",
+        "specialization": "Endocrinology",
+        "appointments": 3,
+        "completed": 2,
+        "revenue_inr": 2200
+      },
+      {
+        "doctor": "Dr. Kavya Reddy",
+        "specialization": "Gynecology & Obstetrics",
+        "appointments": 2,
+        "completed": 1,
+        "revenue_inr": 2000
+      },
+      {
+        "doctor": "Dr. Rohan Mehta",
+        "specialization": "Orthopedics",
+        "appointments": 2,
+        "completed": 1,
+        "revenue_inr": 1200
+      },
+      {
+        "doctor": "Dr. Ananya Iyer",
+        "specialization": "Dermatology",
+        "appointments": 7,
+        "completed": 1,
+        "revenue_inr": 800
+      },
+      {
+        "doctor": "Dr. Priya Sharma",
+        "specialization": "Pediatrics",
+        "appointments": 2,
+        "completed": 0,
+        "revenue_inr": 700
+      },
+      {
+        "doctor": "Sanidhya Srivastava",
+        "specialization": "General Medicine",
+        "appointments": 6,
+        "completed": 2,
+        "revenue_inr": 500
+      },
+      {
+        "doctor": "Dr. Bob Rao",
+        "specialization": "Cardiology",
+        "appointments": 5,
+        "completed": 1,
+        "revenue_inr": 500
+      },
+      {
+        "doctor": "Dr. Arjun Nair",
+        "specialization": "Neurology",
+        "appointments": 2,
+        "completed": 0,
+        "revenue_inr": 0
+      }
+    ]
+  },
+  "view_admin": {
+    "title": "VIEW: select * from v_admin_analytics",
+    "sql": "select * from v_admin_analytics",
+    "rows": [
+      {
+        "total_patients": 10,
+        "total_doctors": 10,
+        "total_appointments": 32,
+        "completed_appointments": 9,
+        "total_reports": 11,
+        "total_ai_analyses": 9,
+        "total_prescriptions": 10,
+        "confirmed_chain_txs": 21,
+        "pending_chain_txs": 0,
+        "avg_confirmation_seconds": 0.3,
+        "total_revenue": 10500,
+        "paid_payments": 11,
+        "total_refunded": 0,
+        "awaiting_payment": 6
+      }
+    ]
+  },
+  "view_load": {
+    "title": "VIEW: v_doctor_weekly_load joined to doctor names",
+    "sql": "select u.full_name as doctor, to_char(l.week_start,'DD Mon YYYY') as week, l.appointment_count, l.completed_count, l.cancelled_count from v_doctor_weekly_load l join users u on u.id = l.doctor_id order by l.week_start desc, u.full_name limit 8",
+    "rows": [
+      {
+        "doctor": "Dr. Ananya Iyer",
+        "week": "25 Feb 2222",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Dr. Bob Rao",
+        "week": "25 Feb 2222",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Dr. Bob Rao",
+        "week": "18 Feb 2222",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Sanidhya Srivastava",
+        "week": "18 Feb 2222",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Dr. Ananya Iyer",
+        "week": "07 Dec 2026",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Dr. Ananya Iyer",
+        "week": "02 Nov 2026",
+        "appointment_count": 2,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Dr. Kavya Reddy",
+        "week": "02 Nov 2026",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      },
+      {
+        "doctor": "Dr. Priya Sharma",
+        "week": "02 Nov 2026",
+        "appointment_count": 1,
+        "completed_count": 0,
+        "cancelled_count": 0
+      }
+    ]
+  },
+  "views_list": {
+    "title": "All views",
+    "sql": "select table_name as view_name from information_schema.views where table_schema = 'public' order by 1",
+    "rows": [
+      {
+        "view_name": "v_admin_analytics"
+      },
+      {
+        "view_name": "v_doctor_dashboard"
+      },
+      {
+        "view_name": "v_doctor_weekly_load"
+      },
+      {
+        "view_name": "v_patient_dashboard"
+      },
+      {
+        "view_name": "v_report_with_analysis"
+      }
+    ]
+  },
+  "prescription_items": {
+    "title": "3NF: one row per medicine in prescription_items",
+    "sql": "select left(pi.prescription_id::text, 8) as prescription, pi.line_no, pi.medicine_name, pi.dosage, pi.frequency, pi.duration_days from prescription_items pi join prescriptions pr on pr.id = pi.prescription_id order by pr.issued_at desc, pi.line_no limit 10",
+    "rows": [
+      {
+        "prescription": "9680a3e4",
+        "line_no": 1,
+        "medicine_name": "Melatonon",
+        "dosage": "500mg",
+        "frequency": "2 times",
+        "duration_days": 7
+      },
+      {
+        "prescription": "c5320db4",
+        "line_no": 1,
+        "medicine_name": "Crocin",
+        "dosage": "500mg",
+        "frequency": "Twice",
+        "duration_days": 7
+      },
+      {
+        "prescription": "16734839",
+        "line_no": 1,
+        "medicine_name": "Levothyroxine",
+        "dosage": "50mcg",
+        "frequency": "once daily on an empty stomach",
+        "duration_days": 90
+      },
+      {
+        "prescription": "f6cc65fa",
+        "line_no": 1,
+        "medicine_name": "Atorvastatin",
+        "dosage": "10mg",
+        "frequency": "once daily",
+        "duration_days": 90
+      },
+      {
+        "prescription": "6e6f720f",
+        "line_no": 1,
+        "medicine_name": "Atorvastatin",
+        "dosage": "20mg",
+        "frequency": "once daily at night",
+        "duration_days": 90
+      },
+      {
+        "prescription": "6e6f720f",
+        "line_no": 2,
+        "medicine_name": "Aspirin",
+        "dosage": "75mg",
+        "frequency": "once daily",
+        "duration_days": 90
+      },
+      {
+        "prescription": "e8fedf84",
+        "line_no": 1,
+        "medicine_name": "Paracetamol",
+        "dosage": "650mg",
+        "frequency": "every 6 hours as needed",
+        "duration_days": 3
+      },
+      {
+        "prescription": "3bb16db5",
+        "line_no": 1,
+        "medicine_name": "Ibuprofen",
+        "dosage": "400mg",
+        "frequency": "three times daily after food",
+        "duration_days": 5
+      },
+      {
+        "prescription": "3bb16db5",
+        "line_no": 2,
+        "medicine_name": "Thiocolchicoside",
+        "dosage": "4mg",
+        "frequency": "twice daily",
+        "duration_days": 5
+      },
+      {
+        "prescription": "15583dee",
+        "line_no": 1,
+        "medicine_name": "Escitalopram",
+        "dosage": "5mg",
+        "frequency": "once daily",
+        "duration_days": 30
+      }
+    ]
+  },
+  "payments_cols": {
+    "title": "3NF: payments columns after migration 012 (no patient_id / doctor_id)",
+    "sql": "select column_name, data_type, is_nullable from information_schema.columns where table_schema='public' and table_name='payments' order by ordinal_position",
+    "rows": [
+      {
+        "column_name": "id",
+        "data_type": "uuid",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "appointment_id",
+        "data_type": "uuid",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "amount",
+        "data_type": "numeric",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "currency",
+        "data_type": "character",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "method",
+        "data_type": "USER-DEFINED",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "provider",
+        "data_type": "text",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "provider_ref",
+        "data_type": "text",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "paid_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO"
+      },
+      {
+        "column_name": "refunded_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "YES"
+      }
+    ]
+  },
+  "constraints": {
+    "title": "Constraints: CHECK and UNIQUE rules",
+    "sql": "select conrelid::regclass::text as table_name, conname as constraint_name, case contype when 'c' then 'CHECK' when 'u' then 'UNIQUE' end as type, left(pg_get_constraintdef(oid), 70) as definition from pg_constraint where connamespace = 'public'::regnamespace and contype in ('c','u') order by 1, 3, 2",
+    "rows": [
+      {
+        "table_name": "ai_analyses",
+        "constraint_name": "ai_analyses_confidence_check",
+        "type": "CHECK",
+        "definition": "CHECK (((confidence >= (0)::numeric) AND (confidence <= (1)::numeric))"
+      },
+      {
+        "table_name": "appointments",
+        "constraint_name": "chk_appt_roles",
+        "type": "CHECK",
+        "definition": "CHECK ((patient_id <> doctor_id))"
+      },
+      {
+        "table_name": "auth_nonces",
+        "constraint_name": "auth_nonces_nonce_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (nonce)"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "constraint_name": "chk_one_target",
+        "type": "CHECK",
+        "definition": "CHECK ((((report_id IS NOT NULL) AND (prescription_id IS NULL)) OR ((r"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "constraint_name": "blockchain_transactions_tx_hash_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (tx_hash)"
+      },
+      {
+        "table_name": "doctor_profiles",
+        "constraint_name": "doctor_profiles_consultation_fee_check",
+        "type": "CHECK",
+        "definition": "CHECK ((consultation_fee >= (0)::numeric))"
+      },
+      {
+        "table_name": "doctor_profiles",
+        "constraint_name": "doctor_profiles_years_experience_check",
+        "type": "CHECK",
+        "definition": "CHECK ((years_experience >= 0))"
+      },
+      {
+        "table_name": "doctor_profiles",
+        "constraint_name": "doctor_profiles_license_number_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (license_number)"
+      },
+      {
+        "table_name": "medical_reports",
+        "constraint_name": "chk_file_hash_format",
+        "type": "CHECK",
+        "definition": "CHECK ((file_hash ~* '^[a-f0-9]{64}$'::text))"
+      },
+      {
+        "table_name": "patient_profiles",
+        "constraint_name": "patient_profiles_blood_group_check",
+        "type": "CHECK",
+        "definition": "CHECK ((blood_group = ANY (ARRAY['A+'::text, 'A-'::text, 'B+'::text, '"
+      },
+      {
+        "table_name": "payments",
+        "constraint_name": "chk_refund_time",
+        "type": "CHECK",
+        "definition": "CHECK (((status = 'refunded'::payment_status) = (refunded_at IS NOT NU"
+      },
+      {
+        "table_name": "payments",
+        "constraint_name": "payments_amount_check",
+        "type": "CHECK",
+        "definition": "CHECK ((amount > (0)::numeric))"
+      },
+      {
+        "table_name": "payments",
+        "constraint_name": "payments_appointment_id_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (appointment_id)"
+      },
+      {
+        "table_name": "payments",
+        "constraint_name": "payments_provider_ref_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (provider_ref)"
+      },
+      {
+        "table_name": "prescription_items",
+        "constraint_name": "prescription_items_duration_days_check",
+        "type": "CHECK",
+        "definition": "CHECK ((duration_days > 0))"
+      },
+      {
+        "table_name": "prescription_items",
+        "constraint_name": "prescription_items_line_no_check",
+        "type": "CHECK",
+        "definition": "CHECK ((line_no > 0))"
+      },
+      {
+        "table_name": "prescription_items",
+        "constraint_name": "prescription_items_medicine_name_check",
+        "type": "CHECK",
+        "definition": "CHECK ((length(TRIM(BOTH FROM medicine_name)) > 0))"
+      },
+      {
+        "table_name": "prescription_items",
+        "constraint_name": "uq_prescription_line",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (prescription_id, line_no)"
+      },
+      {
+        "table_name": "prescriptions",
+        "constraint_name": "chk_presc_roles",
+        "type": "CHECK",
+        "definition": "CHECK ((patient_id <> doctor_id))"
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "users_email_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (email)"
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "users_wallet_address_key",
+        "type": "UNIQUE",
+        "definition": "UNIQUE (wallet_address)"
+      }
+    ]
+  },
+  "indexes": {
+    "title": "Indexes",
+    "sql": "select tablename as table_name, indexname as index_name, left(regexp_replace(indexdef, '^.* USING ', 'USING '), 60) as definition from pg_indexes where schemaname = 'public' and indexname not like '%_pkey' order by 1, 2",
+    "rows": [
+      {
+        "table_name": "ai_analyses",
+        "index_name": "idx_ai_embedding",
+        "definition": "USING ivfflat (embedding vector_cosine_ops) WITH (lists='100"
+      },
+      {
+        "table_name": "ai_analyses",
+        "index_name": "idx_ai_report",
+        "definition": "USING btree (report_id)"
+      },
+      {
+        "table_name": "appointments",
+        "index_name": "idx_appt_doctor",
+        "definition": "USING btree (doctor_id)"
+      },
+      {
+        "table_name": "appointments",
+        "index_name": "idx_appt_patient",
+        "definition": "USING btree (patient_id)"
+      },
+      {
+        "table_name": "appointments",
+        "index_name": "idx_appt_scheduled",
+        "definition": "USING btree (scheduled_at)"
+      },
+      {
+        "table_name": "appointments",
+        "index_name": "idx_appt_status",
+        "definition": "USING btree (status)"
+      },
+      {
+        "table_name": "audit_logs",
+        "index_name": "idx_audit_created",
+        "definition": "USING btree (created_at)"
+      },
+      {
+        "table_name": "audit_logs",
+        "index_name": "idx_audit_entity",
+        "definition": "USING btree (entity_type, entity_id)"
+      },
+      {
+        "table_name": "audit_logs",
+        "index_name": "idx_audit_user",
+        "definition": "USING btree (user_id)"
+      },
+      {
+        "table_name": "auth_nonces",
+        "index_name": "auth_nonces_nonce_key",
+        "definition": "USING btree (nonce)"
+      },
+      {
+        "table_name": "auth_nonces",
+        "index_name": "idx_auth_nonces_expiry",
+        "definition": "USING btree (expires_at) WHERE (consumed_at IS NULL)"
+      },
+      {
+        "table_name": "auth_nonces",
+        "index_name": "idx_auth_nonces_wallet",
+        "definition": "USING btree (wallet_address)"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "index_name": "blockchain_transactions_tx_hash_key",
+        "definition": "USING btree (tx_hash)"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "index_name": "idx_btx_prescription",
+        "definition": "USING btree (prescription_id)"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "index_name": "idx_btx_report",
+        "definition": "USING btree (report_id)"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "index_name": "idx_btx_status",
+        "definition": "USING btree (status)"
+      },
+      {
+        "table_name": "doctor_profiles",
+        "index_name": "doctor_profiles_license_number_key",
+        "definition": "USING btree (license_number)"
+      },
+      {
+        "table_name": "medical_reports",
+        "index_name": "idx_reports_created",
+        "definition": "USING btree (created_at DESC)"
+      },
+      {
+        "table_name": "medical_reports",
+        "index_name": "idx_reports_doctor",
+        "definition": "USING btree (doctor_id)"
+      },
+      {
+        "table_name": "medical_reports",
+        "index_name": "idx_reports_patient",
+        "definition": "USING btree (patient_id)"
+      },
+      {
+        "table_name": "medical_reports",
+        "index_name": "idx_reports_type",
+        "definition": "USING btree (report_type)"
+      },
+      {
+        "table_name": "notifications",
+        "index_name": "idx_notif_user",
+        "definition": "USING btree (user_id, is_read)"
+      },
+      {
+        "table_name": "notifications",
+        "index_name": "idx_notif_user_created",
+        "definition": "USING btree (user_id, created_at DESC)"
+      },
+      {
+        "table_name": "payments",
+        "index_name": "idx_payments_status",
+        "definition": "USING btree (status)"
+      },
+      {
+        "table_name": "payments",
+        "index_name": "payments_appointment_id_key",
+        "definition": "USING btree (appointment_id)"
+      },
+      {
+        "table_name": "payments",
+        "index_name": "payments_provider_ref_key",
+        "definition": "USING btree (provider_ref)"
+      },
+      {
+        "table_name": "prescription_items",
+        "index_name": "uq_prescription_line",
+        "definition": "USING btree (prescription_id, line_no)"
+      },
+      {
+        "table_name": "prescriptions",
+        "index_name": "idx_presc_doctor",
+        "definition": "USING btree (doctor_id)"
+      },
+      {
+        "table_name": "prescriptions",
+        "index_name": "idx_presc_issued",
+        "definition": "USING btree (issued_at DESC)"
+      },
+      {
+        "table_name": "prescriptions",
+        "index_name": "idx_presc_patient",
+        "definition": "USING btree (patient_id)"
+      },
+      {
+        "table_name": "users",
+        "index_name": "idx_users_email_trgm",
+        "definition": "USING gin (((email)::text) gin_trgm_ops)"
+      },
+      {
+        "table_name": "users",
+        "index_name": "idx_users_full_name_trgm",
+        "definition": "USING gin (full_name gin_trgm_ops)"
+      },
+      {
+        "table_name": "users",
+        "index_name": "idx_users_role",
+        "definition": "USING btree (role)"
+      },
+      {
+        "table_name": "users",
+        "index_name": "idx_users_wallet",
+        "definition": "USING btree (wallet_address)"
+      },
+      {
+        "table_name": "users",
+        "index_name": "users_email_key",
+        "definition": "USING btree (email)"
+      },
+      {
+        "table_name": "users",
+        "index_name": "users_wallet_address_key",
+        "definition": "USING btree (wallet_address)"
+      }
+    ]
+  },
+  "triggers": {
+    "title": "Triggers",
+    "sql": "select event_object_table as table_name, trigger_name, string_agg(event_manipulation, ' / ' order by event_manipulation) as events, action_timing as timing from information_schema.triggers where trigger_schema = 'public' group by 1, 2, 4 order by 1, 2",
+    "rows": [
+      {
+        "table_name": "appointments",
+        "trigger_name": "trg_appointments_updated_at",
+        "events": "UPDATE",
+        "timing": "BEFORE"
+      },
+      {
+        "table_name": "appointments",
+        "trigger_name": "trg_audit_appointments",
+        "events": "DELETE / INSERT / UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "appointments",
+        "trigger_name": "trg_check_appt_roles",
+        "events": "INSERT / UPDATE",
+        "timing": "BEFORE"
+      },
+      {
+        "table_name": "appointments",
+        "trigger_name": "trg_notify_appointment",
+        "events": "INSERT / UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "appointments",
+        "trigger_name": "trg_refund_on_cancel",
+        "events": "UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "medical_reports",
+        "trigger_name": "trg_audit_medical_reports",
+        "events": "DELETE / INSERT / UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "medical_reports",
+        "trigger_name": "trg_notify_report",
+        "events": "INSERT",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "payments",
+        "trigger_name": "trg_audit_payments",
+        "events": "DELETE / INSERT / UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "prescriptions",
+        "trigger_name": "trg_audit_prescriptions",
+        "events": "DELETE / INSERT / UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "prescriptions",
+        "trigger_name": "trg_check_prescription_appointment",
+        "events": "INSERT / UPDATE",
+        "timing": "BEFORE"
+      },
+      {
+        "table_name": "prescriptions",
+        "trigger_name": "trg_notify_prescription",
+        "events": "INSERT",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "users",
+        "trigger_name": "trg_audit_users_role",
+        "events": "UPDATE",
+        "timing": "AFTER"
+      },
+      {
+        "table_name": "users",
+        "trigger_name": "trg_users_updated_at",
+        "events": "UPDATE",
+        "timing": "BEFORE"
+      }
+    ]
+  },
+  "procedures": {
+    "title": "Stored procedure and functions",
+    "sql": "select p.proname as name, case p.prokind when 'p' then 'PROCEDURE' else 'FUNCTION' end as kind, pg_get_function_identity_arguments(p.oid) as arguments from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.prokind = 'p' or p.proname like 'fn\\_%' or p.proname like 'match\\_%') order by 2 desc, 1",
+    "rows": [
+      {
+        "name": "sp_create_prescription",
+        "kind": "PROCEDURE",
+        "arguments": "IN p_doctor_id uuid, IN p_patient_id uuid, IN p_appointment_id uuid, IN p_notes text, IN p_items jsonb, INOUT p_prescription_id uuid"
+      },
+      {
+        "name": "fn_audit_trigger",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_check_doctor_role",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_check_prescription_appointment",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_current_user_id",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_current_user_role",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_notify_appointment_change",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_notify_new_prescription",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_notify_new_report",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_refund_on_cancel",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "fn_set_updated_at",
+        "kind": "FUNCTION",
+        "arguments": ""
+      },
+      {
+        "name": "match_patient_analyses",
+        "kind": "FUNCTION",
+        "arguments": "p_patient_id uuid, p_query_embedding vector, p_match_count integer"
+      }
+    ]
+  },
+  "rls": {
+    "title": "Row-level security policies",
+    "sql": "select tablename as table_name, policyname as policy, cmd as command from pg_policies where schemaname = 'public' order by 1, 2",
+    "rows": [
+      {
+        "table_name": "ai_analyses",
+        "policy": "p_ai_analyses_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "appointments",
+        "policy": "p_appointments_insert",
+        "command": "INSERT"
+      },
+      {
+        "table_name": "appointments",
+        "policy": "p_appointments_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "appointments",
+        "policy": "p_appointments_update",
+        "command": "UPDATE"
+      },
+      {
+        "table_name": "audit_logs",
+        "policy": "p_audit_admin_only",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "blockchain_transactions",
+        "policy": "p_btx_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "doctor_profiles",
+        "policy": "p_doctor_profiles",
+        "command": "ALL"
+      },
+      {
+        "table_name": "medical_reports",
+        "policy": "p_reports_insert",
+        "command": "INSERT"
+      },
+      {
+        "table_name": "medical_reports",
+        "policy": "p_reports_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "notifications",
+        "policy": "p_notifications_owner",
+        "command": "ALL"
+      },
+      {
+        "table_name": "patient_profiles",
+        "policy": "p_patient_profiles",
+        "command": "ALL"
+      },
+      {
+        "table_name": "payments",
+        "policy": "p_payments_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "prescription_items",
+        "policy": "p_prescription_items_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "prescriptions",
+        "policy": "p_prescriptions_insert",
+        "command": "INSERT"
+      },
+      {
+        "table_name": "prescriptions",
+        "policy": "p_prescriptions_select",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "users",
+        "policy": "p_users_select_for_booking",
+        "command": "SELECT"
+      },
+      {
+        "table_name": "users",
+        "policy": "p_users_self_update",
+        "command": "UPDATE"
+      }
+    ]
+  },
+  "audit": {
+    "title": "Audit trail written by triggers, with the acting user",
+    "sql": "select to_char(l.created_at at time zone 'Asia/Kolkata', 'DD Mon HH24:MI') as at_ist, coalesce(u.full_name, '(system)') as acted_by, l.action, l.entity_type from audit_logs l left join users u on u.id = l.user_id order by l.created_at desc limit 10",
+    "rows": [
+      {
+        "at_ist": "28 Oct 18:31",
+        "acted_by": "(system)",
+        "action": "DELETE",
+        "entity_type": "payments"
+      },
+      {
+        "at_ist": "28 Oct 18:31",
+        "acted_by": "(system)",
+        "action": "DELETE",
+        "entity_type": "appointments"
+      },
+      {
+        "at_ist": "28 Oct 18:31",
+        "acted_by": "(system)",
+        "action": "DELETE",
+        "entity_type": "prescriptions"
+      },
+      {
+        "at_ist": "28 Oct 18:29",
+        "acted_by": "Dr. Bob Rao",
+        "action": "UPDATE",
+        "entity_type": "payments"
+      },
+      {
+        "at_ist": "28 Oct 18:29",
+        "acted_by": "Dr. Bob Rao",
+        "action": "UPDATE",
+        "entity_type": "appointments"
+      },
+      {
+        "at_ist": "28 Oct 18:29",
+        "acted_by": "Chitra Menon",
+        "action": "INSERT",
+        "entity_type": "payments"
+      },
+      {
+        "at_ist": "28 Oct 18:29",
+        "acted_by": "Dr. Bob Rao",
+        "action": "INSERT",
+        "entity_type": "prescriptions"
+      },
+      {
+        "at_ist": "28 Oct 18:29",
+        "acted_by": "Dr. Bob Rao",
+        "action": "UPDATE",
+        "entity_type": "appointments"
+      },
+      {
+        "at_ist": "28 Oct 18:29",
+        "acted_by": "Chitra Menon",
+        "action": "INSERT",
+        "entity_type": "appointments"
+      },
+      {
+        "at_ist": "28 Oct 16:09",
+        "acted_by": "(system)",
+        "action": "INSERT",
+        "entity_type": "prescriptions"
+      }
+    ]
+  },
+  "demo_procedure": [
+    [
+      "BEGIN",
+      ""
+    ],
+    [
+      "CALL sp_create_prescription(doctor, patient, NULL, 'Demo for report', '[Amoxicillin, ORS]', NULL)",
+      "p_prescription_id = d1c8508b-e0f0-43a5-9d3f-393f88eb8679"
+    ],
+    [
+      "SELECT line_no, medicine_name, dosage, duration_days FROM prescription_items WHERE prescription_id = <new id>",
+      "1 | Amoxicillin | 500mg | 5\n2 | ORS | 1 sachet | 2"
+    ],
+    [
+      "ROLLBACK",
+      "demo data discarded"
+    ]
+  ],
+  "demo_atomicity": [
+    [
+      "SELECT count(*) FROM prescriptions",
+      "10"
+    ],
+    [
+      "BEGIN; CALL sp_create_prescription(... items: Paracetamol (3 days), Bad line (0 days) ...)",
+      "ERROR: new row for relation \"prescription_items\" violates check constraint \"prescription_items_duration_days_check\""
+    ],
+    [
+      "(transaction aborted)",
+      "ROLLBACK"
+    ],
+    [
+      "SELECT count(*) FROM prescriptions",
+      "10   (unchanged: the header row was rolled back with the bad item)"
+    ]
+  ],
+  "demo_trigger": [
+    [
+      "BEGIN; SELECT set_config('app.current_user_id', <admin id>, true)",
+      "acting user recorded for the audit trigger"
+    ],
+    [
+      "SELECT status, payment FROM appointment of Sneha Kulkarni",
+      "confirmed | paid"
+    ],
+    [
+      "UPDATE appointments SET status = 'cancelled' WHERE id = <that appointment>",
+      "UPDATE 1   -> trg_refund_on_cancel, trg_notify_appointment, trg_audit_appointments fire"
+    ],
+    [
+      "SELECT status, refunded_at IS NOT NULL FROM payments WHERE appointment_id = <it>",
+      "refunded | true"
+    ],
+    [
+      "SELECT action, entity_type, acted_by FROM audit_logs (newest for it)",
+      "UPDATE | appointments | Alice Admin"
+    ],
+    [
+      "ROLLBACK",
+      "demo discarded: appointment and payment are unchanged"
+    ]
+  ]
+}

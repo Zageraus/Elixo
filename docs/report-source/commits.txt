@@ -1,0 +1,42 @@
+2f0ea0f|2f0ea0f05d7caea96ae69c5dd808071aa1d48642|06 Oct 2026 12:49|Zageraus|ssanidhya886@gmail.com||Initial commit: HealthChain platform
+705efb5|705efb5659c318988434e669ac77afc19f56c2a7|06 Oct 2026 13:00|Zageraus|ssanidhya886@gmail.com|2f0ea0f05d7caea96ae69c5dd808071aa1d48642|Add healthchain.zip archive
+b11eb92|b11eb92615ec2d554f610d913db37e33b8719304|11 Oct 2026 14:11|Zageraus|ssanidhya886@gmail.com|705efb5659c318988434e669ac77afc19f56c2a7|Delete healthchain.zip
+c41eb12|c41eb123d2ebf93d1e7084bee40d3acc9c13ba86|11 Oct 2026 14:16|Zageraus|ssanidhya886@gmail.com|b11eb92615ec2d554f610d913db37e33b8719304|Update HealthChain codebase with full full-stack architecture, contracts, and AI service
+8dda7ab|8dda7ab37786a45713f889274545693413649ad6|13 Oct 2026 11:57|Zageraus|ssanidhya886@gmail.com|c41eb123d2ebf93d1e7084bee40d3acc9c13ba86|docs: overhaul README with architecture diagrams, DBMS details, and API reference
+5d09f0c|5d09f0cfebea64c58fb2f2690f90555e67d5722f|13 Oct 2026 12:10|Zageraus|ssanidhya886@gmail.com|8dda7ab37786a45713f889274545693413649ad6|feat(frontend): implement doctor prescription issuance form and patient prescription viewer
+bbedab8|bbedab821ffacf38014cc02792a6cb418c992324|13 Oct 2026 12:28|Zageraus|ssanidhya886@gmail.com|5d09f0cfebea64c58fb2f2690f90555e67d5722f|feat(auth): implement admin setup passcode check for admin role registration
+d534716|d534716118572a7bb64017f81c247e08b3476073|18 Oct 2026 00:26|Arna|your_actual_github_email@gmail.com|bbedab821ffacf38014cc02792a6cb418c992324|Upgrade HealthChain AI and blockchain integration
+ba54fd3|ba54fd3440bbe9086e08aa36126e9365402d440e|18 Oct 2026 00:33|Arna Adhikari|arnaadhikari2006@gmail.com|bbedab821ffacf38014cc02792a6cb418c992324 d534716118572a7bb64017f81c247e08b3476073|Merge pull request #1 from Zageraus/healthchain-upgrade
+ff5fd13|ff5fd13e20490cc551f248de4a3d39c3e30688ed|19 Oct 2026 22:37|Arnahhh|arnaadhikari2006@gmail.com|ba54fd3440bbe9086e08aa36126e9365402d440e|Add local development files
+224db02|224db020c5a23e577b86a794bed9210fb108ebee|20 Oct 2026 12:59|Zageraus|ssanidhya886@gmail.com|ff5fd13e20490cc551f248de4a3d39c3e30688ed|Improve Elixor frontend and application
+8abbccf|8abbccfaff46592a2b1bd543e24c425c1e46118e|21 Oct 2026 00:41|Arnahhh|arnaadhikari2006@gmail.com|224db020c5a23e577b86a794bed9210fb108ebee|Prepare ELIXOR project update
+a966cbe|a966cbe94c23d990436873970d251d3a1a863bc0|25 Oct 2026 15:21|Zageraus|ssanidhya886@gmail.com|8abbccfaff46592a2b1bd543e24c425c1e46118e|Add email auth, appointment booking, and optional blockchain anchoring
+7a51624|7a516244d41442934635d049862013d50c7ee3f2|25 Oct 2026 15:29|Zageraus|ssanidhya886@gmail.com|a966cbe94c23d990436873970d251d3a1a863bc0|Guard patient dashboard by role and surface doctor-list errors
+9390d47|9390d477ce82ce4f384ebe3ad21411ff5b612967|25 Oct 2026 15:31|Zageraus|ssanidhya886@gmail.com|7a516244d41442934635d049862013d50c7ee3f2|Sign out automatically when the stored session is rejected
+518f977|518f97736a84308aadf3a1f856ca31523af1685a|25 Oct 2026 15:33|Zageraus|ssanidhya886@gmail.com|9390d477ce82ce4f384ebe3ad21411ff5b612967|Fix form reset after booking and report upload
+a493dfa|a493dfa80e9a6fd125257beaaba3cc8cd094e5ef|25 Oct 2026 15:43|Zageraus|ssanidhya886@gmail.com|518f97736a84308aadf3a1f856ca31523af1685a|Let doctors accept appointments and scope dashboard data to the user
+ae28df1|ae28df1bb0848065495b8284da9a93688652243a|25 Oct 2026 15:55|Zageraus|ssanidhya886@gmail.com|a493dfa80e9a6fd125257beaaba3cc8cd094e5ef|Collect doctor specialization at sign-up and filter doctors by it
+e6f2c21|e6f2c21fe3b8a2918a33d67aa0534d4d54c65641|25 Oct 2026 16:11|Zageraus|ssanidhya886@gmail.com|ae28df1bb0848065495b8284da9a93688652243a|Add demo seed data and enable RLS on auth_nonces
+3050504|30505044c2547a8bf1de3f8cca8624e76d7eab3c|25 Oct 2026 16:29|Zageraus|ssanidhya886@gmail.com|e6f2c21fe3b8a2918a33d67aa0534d4d54c65641|Show names on prescriptions and only badge truly anchored ones
+c3a2945|c3a2945893b27eb2088260c680c52ae4a7d44549|25 Oct 2026 16:41|Zageraus|ssanidhya886@gmail.com|30505044c2547a8bf1de3f8cca8624e76d7eab3c|Add simulated consultation payments
+d4ba353|d4ba353578468e77ba3046a9f739e5ebef5474db|25 Oct 2026 16:48|Zageraus|ssanidhya886@gmail.com|c3a2945893b27eb2088260c680c52ae4a7d44549|Let admins deactivate or permanently delete patients and doctors
+6773bd4|6773bd4520aa4803706aa1ae0816cf2456c97e63|25 Oct 2026 16:54|Zageraus|ssanidhya886@gmail.com|d4ba353578468e77ba3046a9f739e5ebef5474db|Notify patients when their doctor is deactivated or deleted
+1835523|18355233c24adc865136a3c6296847f59c590c70|25 Oct 2026 17:03|Zageraus|ssanidhya886@gmail.com|6773bd4520aa4803706aa1ae0816cf2456c97e63|Fix permanent delete of users with anchored records
+c22f815|c22f815018db22a56f738c96f17ca9e9395c77f6|26 Oct 2026 20:38|Zageraus|ssanidhya886@gmail.com|18355233c24adc865136a3c6296847f59c590c70|Make the report upload message reflect what actually happened
+d458724|d45872428c25f667ba77786ae0890c7cfc7e111f|26 Oct 2026 20:52|Zageraus|ssanidhya886@gmail.com|c22f815018db22a56f738c96f17ca9e9395c77f6|Show the real anchoring status on report cards
+4d66d95|4d66d9523b5ed2d43ebb7178de0c19a5190d3897|26 Oct 2026 20:59|Zageraus|ssanidhya886@gmail.com|d45872428c25f667ba77786ae0890c7cfc7e111f|Let patients open uploaded report PDFs through signed links
+174f6b5|174f6b5e18f558ebcaf42cc580848b8a05b478b7|26 Oct 2026 21:07|Zageraus|ssanidhya886@gmail.com|4d66d9523b5ed2d43ebb7178de0c19a5190d3897|Rewrite README to match the current project
+3198f74|3198f744d2a2f55f9914d291ba0393fd4bfffcf7|26 Oct 2026 21:33|Zageraus|ssanidhya886@gmail.com|174f6b5e18f558ebcaf42cc580848b8a05b478b7|Enable blockchain anchoring on a local chain with integrity checks
+611694b|611694b92291e2f3a8c207d6d5cd1d1fb6d4ef5d|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|3198f744d2a2f55f9914d291ba0393fd4bfffcf7|Normalize prescriptions and payments to 3NF and add a prescription procedure
+4fa0cdd|4fa0cdd74f65ad52f88699e5f947c496260b057f|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|611694b92291e2f3a8c207d6d5cd1d1fb6d4ef5d|Use Prisma ORM for all database access, with transactions
+0cc5722|0cc57221e708accdf47581310415228ccc45986c|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|4fa0cdd74f65ad52f88699e5f947c496260b057f|Add health profiles, pagination, user search and role-gated dashboards
+6ff0fc6|6ff0fc6ab2566bedd74580b12afc9463e32c1c8b|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|0cc57221e708accdf47581310415228ccc45986c|Remove emojis from the admin dashboard header
+f0ef5fa|f0ef5faaeb7e5cd7181427547452585e5e5e6250|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|6ff0fc6ab2566bedd74580b12afc9463e32c1c8b|Add database design document and project proposal
+ddd0827|ddd0827938bab6e3254de84a69e996bde157f14e|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|f0ef5faaeb7e5cd7181427547452585e5e5e6250|Add Docker, CI, backup scripts and deployment config
+2ac37ae|2ac37aeee272cd1f70f375272449aebb225f2960|28 Oct 2026 18:50|Zageraus|ssanidhya886@gmail.com|ddd0827938bab6e3254de84a69e996bde157f14e|Document Prisma, transactions, Docker, backups and CI in the README
+7bfab2a|7bfab2a43ce87eccfe3b581291752373742f1107|29 Oct 2026 21:19|Zageraus|ssanidhya886@gmail.com|2ac37aeee272cd1f70f375272449aebb225f2960|Return 409 when registering an email that is already in use
+18918c0|18918c0ed7116963fd5c344b5657816f16cb239a|29 Oct 2026 21:19|Zageraus|ssanidhya886@gmail.com|7bfab2a43ce87eccfe3b581291752373742f1107|Add a plain-language project overview PDF
+3959539|395953962d0504c3a7aa4af504d23494685f538e|30 Oct 2026 12:21|Zageraus|ssanidhya886@gmail.com|18918c0ed7116963fd5c344b5657816f16cb239a|Listen on 0.0.0.0 for Render and ignore the .vercel folder
+6530d61|6530d6110af80847f99ea850ad136a313bf6574b|30 Oct 2026 12:21|Zageraus|ssanidhya886@gmail.com|395953962d0504c3a7aa4af504d23494685f538e|Use Claude for report summaries on the deployed server
+925e4ec|925e4ec5505a0839c682dbc5b9a608df5925febf|30 Oct 2026 21:35|Zageraus|ssanidhya886@gmail.com|6530d6110af80847f99ea850ad136a313bf6574b|Add a free OpenAI-compatible AI provider (Groq) for live summaries
+b0e7e8b|b0e7e8b6e06a39a0ef7ba37d01b16e6fd26b9f83|30 Oct 2026 21:40|Zageraus|ssanidhya886@gmail.com|925e4ec5505a0839c682dbc5b9a608df5925febf|Pick an available AI model when the configured one is gone
