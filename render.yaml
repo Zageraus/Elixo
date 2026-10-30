@@ -30,3 +30,7 @@ services:
         sync: false
       - key: BLOCKCHAIN_ENABLED
         value: "false"
+      - key: AI_PROVIDER
+        value: claude
+      - key: ANTHROPIC_API_KEY
+        sync: false
